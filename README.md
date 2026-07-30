@@ -98,6 +98,7 @@ python run_experiment.py --config config_pro_wolves_8p.yaml \
 │   ├── review.py              # AI 解说员复盘
 │   └── replay.py              # HTML 回放页生成
 ├── docs/EXPERIMENT_REPORT.md  # 完整实验报告
+├── docs/PROJECT_GUIDE.md      # 代码精读指南（学习向）
 └── logs*/                     # 各实验组对局日志与统计
 ```
 
