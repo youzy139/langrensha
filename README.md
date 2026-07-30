@@ -59,6 +59,9 @@ python main.py --games 3              # 连跑 3 局
 python main.py --human                # 🧑 人机混合局：你随机替换一个 AI 亲自上场
 python main.py --human Carol          # 指定扮演 Carol（身份游戏中揭晓）
 WEREWOLF_MOCK=1 python main.py        # Mock 模式离线测试（无需 API Key）
+
+# Web 人机对局（浏览器游玩，可指定"我要当狼"）
+cd webapp && python server.py --port 7100   # 打开 http://localhost:7100/
 ```
 
 批量实验（支持断点续跑，可反复调用直到跑满）：
