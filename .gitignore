@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# 对局原始日志（体积大，可从 stats.json 复现统计；如需分享可单独打包）
+*.jsonl
+*.checkpoint.json
+
+# 运行输出
+*.log
+game_log*.html
+game_log*.review.md
+logs_mock_test/

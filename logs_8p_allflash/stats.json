@@ -1,0 +1,37 @@
+{
+  "completed": 10,
+  "camp_wins": {
+    "village": 4,
+    "werewolf": 6
+  },
+  "avg_rounds": 3.0,
+  "role_stats": {
+    "hunter": {
+      "games": 10,
+      "wins": 4,
+      "win_rate": 0.4
+    },
+    "seer": {
+      "games": 10,
+      "wins": 4,
+      "win_rate": 0.4
+    },
+    "villager": {
+      "games": 20,
+      "wins": 8,
+      "win_rate": 0.4
+    },
+    "werewolf": {
+      "games": 30,
+      "wins": 18,
+      "win_rate": 0.6
+    },
+    "witch": {
+      "games": 10,
+      "wins": 4,
+      "win_rate": 0.4
+    }
+  },
+  "wolf_survival_rate": 0.367,
+  "llm_failed_attempts": 122
+}

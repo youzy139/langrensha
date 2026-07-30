@@ -1,0 +1,40 @@
+# 对照组：8 人平衡局，全 flash（分离"配置效应"与"模型效应"）
+game:
+  max_rounds: 5
+  speech_max_chars: 200
+  werewolf_discuss_rounds: 1
+
+llm:
+  base_url_env: LLM_BASE_URL
+  api_key_env: LLM_API_KEY
+  default_model: deepseek-v4-flash
+  temperature: 0.8
+  max_tokens: 1500
+  timeout_seconds: 60
+  max_retries: 2
+
+players:
+  - name: Alice
+    role: werewolf
+    model: deepseek-v4-flash
+  - name: Bob
+    role: werewolf
+    model: deepseek-v4-flash
+  - name: Gina
+    role: werewolf
+    model: deepseek-v4-flash
+  - name: Carol
+    role: seer
+    model: deepseek-v4-flash
+  - name: David
+    role: witch
+    model: deepseek-v4-flash
+  - name: Henry
+    role: hunter
+    model: deepseek-v4-flash
+  - name: Eve
+    role: villager
+    model: deepseek-v4-flash
+  - name: Frank
+    role: villager
+    model: deepseek-v4-flash

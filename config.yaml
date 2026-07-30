@@ -1,0 +1,35 @@
+# 多 Agent 狼人杀配置
+game:
+  max_rounds: 5              # 最大轮数，达到后按存活人数裁定
+  speech_max_chars: 200      # 发言长度限制（字）
+  werewolf_discuss_rounds: 1 # 狼人夜间协商轮数
+
+llm:
+  base_url_env: LLM_BASE_URL  # OpenAI 兼容接口地址（环境变量名）
+  api_key_env: LLM_API_KEY    # API Key（环境变量名）
+  default_model: deepseek-v4-flash  # 玩家未单独指定 model 时使用
+  temperature: 0.8
+  max_tokens: 1500            # reasoning 模型需要给思考留预算，否则正文可能被截断为空
+  timeout_seconds: 60         # 单次 LLM 调用超时
+  max_retries: 2              # JSON 解析失败自动重试次数
+
+# 6 人局：2 狼人、1 预言家、1 女巫、2 平民（每个玩家可配不同模型）
+players:
+  - name: Alice
+    role: werewolf
+    model: deepseek-v4-flash
+  - name: Bob
+    role: werewolf
+    model: deepseek-v4-flash
+  - name: Carol
+    role: seer
+    model: deepseek-v4-flash
+  - name: David
+    role: witch
+    model: deepseek-v4-flash
+  - name: Eve
+    role: villager
+    model: deepseek-v4-flash
+  - name: Frank
+    role: villager
+    model: deepseek-v4-flash
