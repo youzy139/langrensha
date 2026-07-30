@@ -12,3 +12,4 @@ __pycache__/
 game_log*.html
 game_log*.review.md
 logs_mock_test/
+webapp/*.log

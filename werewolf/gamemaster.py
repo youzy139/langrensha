@@ -21,7 +21,8 @@ from .roles import CIVILIAN_ROLES, GOD_ROLES, ROLE_NAMES
 class GameMaster:
     def __init__(self, config: dict, logger: GameLogger,
                  rng: Optional[random.Random] = None,
-                 checkpoint_path: Optional[str] = None):
+                 checkpoint_path: Optional[str] = None,
+                 human_agent_cls=None, human_kwargs: Optional[dict] = None):
         self.config = config
         game_cfg = config.get("game", {})
         self.max_rounds = game_cfg.get("max_rounds", 5)
@@ -35,6 +36,8 @@ class GameMaster:
         self.witch_poison = True
         self.winner: Optional[str] = None
         self.checkpoint_path = checkpoint_path
+        self.human_agent_cls = human_agent_cls      # Web 端可注入自定义人类 Agent
+        self.human_kwargs = human_kwargs or {}
         self._build_players()
 
     # ---------- 断点存档 ----------
@@ -80,14 +83,20 @@ class GameMaster:
             role = p["role"]
             mates = [w for w in wolves if w != p["name"]] if role == "werewolf" else []
             agent_cls = PlayerAgent
+            extra = {}
             if p.get("human"):
-                from .human import HumanAgent  # 延迟导入，纯 AI 局无感
-                agent_cls = HumanAgent
+                if self.human_agent_cls is not None:
+                    agent_cls = self.human_agent_cls
+                    extra = self.human_kwargs
+                else:
+                    from .human import HumanAgent  # 延迟导入，纯 AI 局无感
+                    agent_cls = HumanAgent
             agent = agent_cls(
                 name=p["name"], role=role,
                 model=p.get("model") or default_model,
                 all_players=names, mates=mates,
                 client=self.client, speech_max_chars=speech_max, rng=self.rng,
+                **extra,
             )
             self.players[p["name"]] = agent
         self.logger.event(
