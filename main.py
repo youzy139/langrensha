@@ -49,9 +49,31 @@ def main() -> int:
     parser.add_argument("--replay", action="store_true", help="结束后生成 HTML 回放页")
     parser.add_argument("--review", action="store_true",
                         help="结束后让 LLM 解说员生成复盘报告（Markdown + 嵌入回放页）")
+    parser.add_argument("--human", nargs="?", const="__random__", default=None,
+                        metavar="玩家名",
+                        help="人类亲自上场：替换指定玩家（不填名字则随机选一个位置）")
     args = parser.parse_args()
 
     config = load_config(args.config)
+
+    if args.human is not None:
+        import random as _random
+        seats = config["players"]
+        if args.human == "__random__":
+            seat = _random.choice(seats)
+        else:
+            seat = next((p for p in seats if p["name"] == args.human), None)
+            if seat is None:
+                names = "、".join(p["name"] for p in seats)
+                print(f"找不到玩家 {args.human}，可选：{names}")
+                return 1
+        seat["human"] = True
+        print(f"🧑 你将亲自扮演 {seat['name']}（身份游戏中揭晓），"
+              f"其余 {len(seats) - 1} 个位置由 AI 扮演")
+        if args.games > 1:
+            print("（人类模式只跑一局，已忽略 --games）")
+            args.games = 1
+
     results = []
     for i in range(1, args.games + 1):
         log_path = Path(f"game_log_{i}.jsonl") if args.games > 1 else Path("game_log.jsonl")

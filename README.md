@@ -56,6 +56,8 @@ export LLM_API_KEY=sk-xxx
 
 python main.py --replay --review      # 跑一局 + HTML 回放 + AI 解说复盘
 python main.py --games 3              # 连跑 3 局
+python main.py --human                # 🧑 人机混合局：你随机替换一个 AI 亲自上场
+python main.py --human Carol          # 指定扮演 Carol（身份游戏中揭晓）
 WEREWOLF_MOCK=1 python main.py        # Mock 模式离线测试（无需 API Key）
 ```
 

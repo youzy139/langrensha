@@ -79,7 +79,11 @@ class GameMaster:
         for p in self.config["players"]:
             role = p["role"]
             mates = [w for w in wolves if w != p["name"]] if role == "werewolf" else []
-            agent = PlayerAgent(
+            agent_cls = PlayerAgent
+            if p.get("human"):
+                from .human import HumanAgent  # 延迟导入，纯 AI 局无感
+                agent_cls = HumanAgent
+            agent = agent_cls(
                 name=p["name"], role=role,
                 model=p.get("model") or default_model,
                 all_players=names, mates=mates,
@@ -92,8 +96,14 @@ class GameMaster:
                      for p in self.players.values()],
             config=self.config,
         )
-        seat = "；".join(f"{p.name}（{ROLE_NAMES[p.role]}）" for p in self.players.values())
-        self.logger.print(f"===== 游戏开始 | 座位（仅上帝可见）：{seat} =====")
+        # 有人类玩家时不能打印座位身份，否则剧透
+        has_human = any(p.get("human") for p in self.config["players"])
+        if has_human:
+            self.logger.print("===== 游戏开始（人机混合局，身份已单独告知玩家）=====")
+        else:
+            seat = "；".join(f"{p.name}（{ROLE_NAMES[p.role]}）"
+                             for p in self.players.values())
+            self.logger.print(f"===== 游戏开始 | 座位（仅上帝可见）：{seat} =====")
 
     # ---------- 工具 ----------
     def alive(self) -> list[PlayerAgent]:

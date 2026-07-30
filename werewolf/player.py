@@ -34,6 +34,7 @@ class PlayerAgent:
         self.role = role
         self.model = model
         self.client = client
+        self.mates = mates  # 狼队友（非狼为空列表）
         self.speech_max_chars = speech_max_chars
         self.rng = rng or random.Random()
         self.public_log: list[str] = []
