@@ -26,6 +26,7 @@ from fastapi.responses import FileResponse
 from werewolf.gamemaster import GameMaster
 from werewolf.logger import GameLogger
 from werewolf.player import PlayerAgent
+from werewolf.review import generate_review
 from werewolf.roles import ROLE_NAMES
 
 CONFIGS = {
@@ -227,6 +228,16 @@ async def _run_game_session(ws: WebSocket, start_msg: dict) -> None:
     await ws.send_text(json.dumps(
         {"t": "game_over", "winner": winner, "reveal": reveal},
         ensure_ascii=False))
+    # 赛后复盘解说（日志已在 finally 中关闭落盘，可直接读取）。
+    # flash reasoning 模型可能要几十秒，前端先展示终局面板，复盘好了再推送。
+    try:
+        md = await generate_review(config, ROOT / "game_log_web.jsonl")
+    except Exception as e:  # 复盘失败不影响终局体验
+        md = f"（复盘生成失败：{e!r}）"
+    try:
+        await ws.send_text(json.dumps({"t": "review", "md": md}, ensure_ascii=False))
+    except Exception:
+        pass  # 客户端已断开
 
 
 def main() -> None:

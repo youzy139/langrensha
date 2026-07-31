@@ -62,12 +62,37 @@
               font-weight: bold; cursor: pointer; margin-top: 6px; }
   .gameover { background: #2d2640 !important; border: 1px solid #bb9af7;
               font-size: 15px !important; }
+  #endpanel { position: fixed; inset: 0; background: rgba(10,10,18,0.88);
+              display: none; align-items: center; justify-content: center; z-index: 9; }
+  #endpanel .panel { background: #1d1f2e; border: 1px solid #bb9af7;
+                     border-radius: 12px; padding: 24px 28px; width: 640px;
+                     max-width: 92vw; max-height: 86vh; overflow-y: auto; }
+  #endpanel h2 { text-align: center; margin-bottom: 10px; }
+  #end-reveal { background: #24283b; border-radius: 8px; padding: 10px 14px;
+                font-size: 13px; color: #ccc; line-height: 1.7; margin-bottom: 14px; }
+  #review-box { background: #14151f; border: 1px solid #444; border-radius: 8px;
+                padding: 12px 16px; font-size: 14px; line-height: 1.7;
+                max-height: 46vh; overflow-y: auto; margin-bottom: 14px; }
+  #review-box h3 { color: #bb9af7; margin: 12px 0 4px; font-size: 15px; }
+  #review-box h4 { color: #7aa2f7; margin: 10px 0 3px; font-size: 14px; }
+  #review-box p { margin: 4px 0; }
+  #review-box li { margin: 2px 0 2px 18px; }
+  #review-box .loading { color: #e0af68; }
+  #end-btns { display: flex; gap: 10px; }
+  #end-btns button { flex: 1; border: none; padding: 10px; border-radius: 8px;
+                     font-size: 15px; font-weight: bold; cursor: pointer; }
+  #btn-back { background: #364a82; color: #fff; }
+  #btn-again { background: #9ece6a; color: #14151f; }
+  #btn-end { background: none; border: 1px solid #bb9af7; color: #bb9af7;
+             border-radius: 6px; padding: 3px 10px; font-size: 13px;
+             cursor: pointer; display: none; }
 </style>
 </head>
 <body>
 <header>
   <h1>🐺 多Agent狼人杀 · 人机对局</h1>
   <span id="status">等待开局</span>
+  <button id="btn-end">🏁 结算 / 复盘</button>
 </header>
 <main>
   <div id="feed"></div>
@@ -82,6 +107,18 @@
   <div id="textrow">
     <input id="textin" placeholder="等待提问…" disabled>
     <button id="sendbtn" disabled>发送</button>
+  </div>
+</div>
+
+<div id="endpanel">
+  <div class="panel">
+    <h2 id="end-title">对局结束</h2>
+    <div id="end-reveal"></div>
+    <div id="review-box"><span class="loading">🎙️ 解说员复盘生成中…（可以先点下方按钮回看本局对话）</span></div>
+    <div id="end-btns">
+      <button id="btn-back">📜 回看本局对话</button>
+      <button id="btn-again">🔄 再来一局</button>
+    </div>
   </div>
 </div>
 
@@ -120,7 +157,21 @@ const roleCard = document.getElementById("role-card");
 const roster = document.getElementById("roster");
 const lobby = document.getElementById("lobby");
 
-let ws, selCfg = "6p", selRole = "random";
+let ws, selCfg = "6p", selRole = "random", gameEnded = false;
+
+function mdToHtml(md) {
+  const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return md.split("\n").map(line => {
+    let l = esc(line).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`(.+?)`/g, "<code>$1</code>");
+    if (l.startsWith("### ")) return `<h4>${l.slice(4)}</h4>`;
+    if (l.startsWith("## ")) return `<h3>${l.slice(3)}</h3>`;
+    if (l.startsWith("# ")) return `<h3>${l.slice(2)}</h3>`;
+    if (/^[-*] /.test(l)) return `<li>${l.slice(2)}</li>`;
+    if (/^\d+\. /.test(l)) return `<li>${l}</li>`;
+    if (!l.trim()) return "";
+    return `<p>${l}</p>`;
+  }).join("");
+}
 
 function bindOpts(id, cb) {
   document.getElementById(id).addEventListener("click", e => {
@@ -186,6 +237,9 @@ textin.addEventListener("keydown", e => { if (e.key === "Enter") sendbtn.onclick
 
 document.getElementById("startbtn").onclick = () => {
   lobby.style.display = "none";
+  document.getElementById("endpanel").style.display = "none";
+  document.getElementById("btn-end").style.display = "none";
+  gameEnded = false;
   feed.innerHTML = "";
   roleCard.style.display = "none";
   statusEl.textContent = "连接中…";
@@ -218,10 +272,36 @@ function handle(m) {
     const who = m.winner === "village" ? "🎉 好人阵营获胜" : "🐺 狼人阵营获胜";
     addMsg(`${who}\n身份揭晓：${m.reveal}`, "public");
     feed.lastChild.classList.add("gameover");
-    lobby.style.display = "flex";
+    // 终局面板：胜负 + 身份揭晓 + 复盘，不遮挡对话记录
+    gameEnded = true;
+    document.getElementById("end-title").textContent = who;
+    document.getElementById("end-reveal").innerHTML =
+      "<b>身份揭晓</b><br>" + m.reveal.split("；").map(s => escHtml(s)).join("<br>");
+    document.getElementById("review-box").innerHTML =
+      '<span class="loading">🎙️ 解说员复盘生成中…（可以先点下方按钮回看本局对话）</span>';
+    document.getElementById("endpanel").style.display = "flex";
+    document.getElementById("btn-end").style.display = "inline-block";
     document.getElementById("startbtn").textContent = "再来一局";
   }
+  else if (m.t === "review") {
+    document.getElementById("review-box").innerHTML = mdToHtml(m.md);
+  }
 }
+
+function escHtml(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+document.getElementById("btn-back").onclick = () => {
+  document.getElementById("endpanel").style.display = "none";  // 收起面板，对话记录仍在 feed 里可自由回看
+};
+document.getElementById("btn-end").onclick = () => {
+  if (gameEnded) document.getElementById("endpanel").style.display = "flex";
+};
+document.getElementById("btn-again").onclick = () => {
+  document.getElementById("endpanel").style.display = "none";
+  lobby.style.display = "flex";
+};
 </script>
 </body>
 </html>

@@ -1,7 +1,7 @@
 # 多 Agent 狼人杀配置
 game:
   max_rounds: 5              # 最大轮数，达到后按存活人数裁定
-  speech_max_chars: 200      # 发言长度限制（字）
+  speech_max_chars: 300      # 发言长度限制（字）
   werewolf_discuss_rounds: 1 # 狼人夜间协商轮数
 
 llm:

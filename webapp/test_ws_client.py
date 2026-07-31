@@ -28,10 +28,13 @@ async def main() -> int:
                 await ws.send(json.dumps({"t": "answer", "text": text}))
             elif t == "game_over":
                 print("game_over:", m["winner"], "|", m["reveal"])
+            elif t == "review":
+                assert len(m["md"]) > 50, "复盘内容为空！"
+                print("review: 收到复盘（%d 字）" % len(m["md"]))
                 break
     assert got_role.get("role") == "werewolf", "指定当狼失败！"
     assert asks > 0, "没有收到任何提问！"
-    print(f"PASS: 指定角色=狼人 ✓, 收到 {asks} 次提问, 对局完整结束 ✓")
+    print(f"PASS: 指定角色=狼人 ✓, 收到 {asks} 次提问, 对局结束 ✓, 复盘推送 ✓")
     return 0
 
 

@@ -12,7 +12,7 @@ from .roles import ROLE_NAMES
 _REASONING_MAX = 300  # 每条内心戏节选长度，控制 prompt 体积
 
 _COMMENTATOR_PROMPT = (
-    "你是一名资深狼人杀解说员，风格犀利但公正。下面给你一局 6 人狼人杀的"
+    "你是一名资深狼人杀解说员，风格犀利但公正。下面给你一局狼人杀的"
     "完整对局摘要，包含公开事件、夜间行动、以及每个 Agent 的内心思考（【内心】标记）。\n"
     "请输出一份 Markdown 复盘报告，结构如下：\n"
     "## 战局概述（100 字以内）\n"
@@ -82,7 +82,7 @@ async def generate_review(config: dict, log_path: str | Path,
         {"role": "user", "content": f"对局摘要：\n{digest}"},
     ]
     try:
-        review_tokens = config.get("llm", {}).get("review_max_tokens", 4000)
+        review_tokens = config.get("llm", {}).get("review_max_tokens", 8000)
         content, _ = await client.chat(model, messages, max_tokens=review_tokens)
     except Exception as e:
         return f"# 复盘报告生成失败\n\nLLM 调用出错：`{e!r}`\n\n对局摘要：\n\n```\n{digest}\n```"
