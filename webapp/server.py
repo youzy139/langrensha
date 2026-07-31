@@ -2,6 +2,8 @@
 
 - 浏览器打开 / 进入大厅：选局型（6/8 人）、选阵营（可指定"我要当狼"）
 - WebSocket /ws 驱动整局：公开信息流 + 私密信息 + 决策问答
+- 终局后进入"赛后模式"：LLM 解说复盘 + 全员赛后讨论（AI 亮身份交换信息）
+- 每局自动存档到 history/，大厅可随时回看历史对局，无需开新局
 - 角色在每局开始时随机洗牌，人类可指定想要的角色
 - AI 决策走真实 LLM（需 LLM_BASE_URL/LLM_API_KEY）；WEREWOLF_MOCK=1 可离线演示
 """
@@ -13,6 +15,7 @@ import asyncio
 import json
 import random
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -33,6 +36,7 @@ CONFIGS = {
     "6p": ROOT / "config.yaml",
     "8p": ROOT / "config_8p_allflash.yaml",
 }
+HISTORY_DIR = Path(__file__).parent / "history"
 
 app = FastAPI(title="多Agent狼人杀 · 人机对局")
 
@@ -163,19 +167,114 @@ class WebHumanAgent(PlayerAgent):
                                       candidates)
 
 
+# ---------- 历史对局存档 ----------
+def _save_history(record: dict) -> str:
+    HISTORY_DIR.mkdir(exist_ok=True)
+    hist_id = time.strftime("%Y%m%d_%H%M%S")
+    (HISTORY_DIR / f"{hist_id}.json").write_text(
+        json.dumps(record, ensure_ascii=False, indent=1), encoding="utf-8")
+    return hist_id
+
+
+async def _send_history_list(ws: WebSocket) -> None:
+    games = []
+    if HISTORY_DIR.exists():
+        for f in sorted(HISTORY_DIR.glob("*.json"), reverse=True):
+            try:
+                g = json.loads(f.read_text(encoding="utf-8"))
+                games.append({
+                    "id": f.stem, "ts": g.get("ts", f.stem),
+                    "cfg": g.get("cfg", ""), "winner": g.get("winner", ""),
+                    "players": g.get("players", []),
+                })
+            except Exception:
+                continue
+    await ws.send_text(json.dumps(
+        {"t": "history_list", "games": games[:20]}, ensure_ascii=False))
+
+
+async def _send_history_game(ws: WebSocket, hist_id: str) -> None:
+    f = HISTORY_DIR / f"{hist_id}.json"
+    if not f.exists():
+        await ws.send_text(json.dumps(
+            {"t": "feed", "kind": "private", "text": "⚠️ 找不到该历史对局"},
+            ensure_ascii=False))
+        return
+    g = json.loads(f.read_text(encoding="utf-8"))
+    await ws.send_text(json.dumps({"t": "history_game", "game": g},
+                                  ensure_ascii=False))
+
+
+# ---------- 赛后讨论 ----------
+async def _handle_discuss(ws: WebSocket, gm: GameMaster, human_name: str,
+                          question: str) -> None:
+    """全场 AI 亮身份，带着各自的私密信息和推理回应人类的提问。"""
+    agents = [p for p in gm.players.values() if p.name != human_name]
+
+    async def one(agent: PlayerAgent) -> str:
+        try:
+            return await agent.post_game_chat(question, human_name)
+        except Exception as e:
+            return f"（回应失败：{e!r}）"
+
+    replies = await asyncio.gather(*(one(a) for a in agents))
+    for a, r in zip(agents, replies):
+        await ws.send_text(json.dumps(
+            {"t": "discuss_msg", "player": a.name,
+             "role_name": ROLE_NAMES[a.role], "text": r},
+            ensure_ascii=False))
+
+
+# ---------- 对局会话 ----------
 @app.websocket("/ws")
 async def game_ws(ws: WebSocket):
     await ws.accept()
+    incoming: asyncio.Queue = asyncio.Queue()
+
+    async def recv_loop():  # 统一接收，分发给大厅/对局/赛后各阶段
+        while True:
+            incoming.put_nowait(json.loads(await ws.receive_text()))
+
+    recv_task = asyncio.create_task(recv_loop())
     try:
-        while True:  # 支持"再来一局"
-            msg = json.loads(await ws.receive_text())
-            if msg.get("t") == "start":
-                await _run_game_session(ws, msg)
+        while True:
+            msg = await incoming.get()
+            t = msg.get("t")
+            if t == "start":
+                await _session_loop(ws, msg, incoming)
+            elif t == "history":
+                await _send_history_list(ws)
+            elif t == "load_history":
+                await _send_history_game(ws, msg.get("id", ""))
     except WebSocketDisconnect:
         pass
+    finally:
+        recv_task.cancel()
 
 
-async def _run_game_session(ws: WebSocket, start_msg: dict) -> None:
+async def _session_loop(ws: WebSocket, start_msg: dict,
+                        incoming: asyncio.Queue) -> None:
+    """打完一局 → 赛后模式（复盘/讨论/看历史）→ 收到 start 再开一局。"""
+    while True:
+        gm, config, human_name, winner, record = await _play_one_game(
+            ws, start_msg, incoming)
+        try:
+            # 赛后复盘解说（日志已落盘；flash reasoning 模型可能要几十秒）
+            try:
+                md = await generate_review(config, ROOT / "game_log_web.jsonl")
+            except Exception as e:  # 复盘失败不影响终局体验
+                md = f"（复盘生成失败：{e!r}）"
+            record["review"] = md
+            record["id"] = _save_history(record)
+            await ws.send_text(json.dumps({"t": "review", "md": md},
+                                          ensure_ascii=False))
+            start_msg = await _post_game_loop(ws, gm, human_name, incoming)
+        finally:
+            await gm.client.aclose()
+
+
+async def _play_one_game(ws: WebSocket, start_msg: dict,
+                         incoming: asyncio.Queue):
     cfg_path = CONFIGS.get(start_msg.get("config", "6p"), CONFIGS["6p"])
     with open(cfg_path, encoding="utf-8") as f:
         config = yaml.safe_load(f)
@@ -184,25 +283,34 @@ async def _run_game_session(ws: WebSocket, start_msg: dict) -> None:
 
     feed_q: asyncio.Queue = asyncio.Queue()
     inbox: asyncio.Queue = asyncio.Queue()
+    record: dict = {"ts": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "cfg": start_msg.get("config", "6p"), "feed": []}
     logger = WebLogger(ROOT / "game_log_web.jsonl", feed_q)
     gm = GameMaster(config, logger, rng=rng,
                     human_agent_cls=WebHumanAgent,
                     human_kwargs={"feed_q": feed_q, "inbox": inbox})
     human_name = next(p["name"] for p in config["players"] if p.get("human"))
+    record["human"] = human_name
+    record["players"] = [{"name": p["name"], "role": p["role"],
+                          "role_name": ROLE_NAMES[p["role"]]}
+                         for p in config["players"]]
     await ws.send_text(json.dumps(
         {"t": "started", "name": human_name,
          "players": [p["name"] for p in config["players"]]}, ensure_ascii=False))
 
-    async def pump_out():  # 服务端事件 → 浏览器
+    async def pump_out():  # 服务端事件 → 浏览器，同时录进历史存档
         while True:
             m = await feed_q.get()
+            if m.get("t") in ("feed", "role"):
+                record["feed"].append(m)
             await ws.send_text(json.dumps(m, ensure_ascii=False))
 
-    async def pump_in():  # 浏览器回答 → 人类 Agent
+    async def pump_in():  # 统一入口的消息 → 人类 Agent 的回答队列
         while True:
-            m = json.loads(await ws.receive_text())
+            m = await incoming.get()
             if m.get("t") == "answer":
                 inbox.put_nowait(m)
+            # start/history 等消息在游戏进行中忽略
 
     game_task = asyncio.create_task(gm.run())
     out_task = asyncio.create_task(pump_out())
@@ -217,27 +325,35 @@ async def _run_game_session(ws: WebSocket, start_msg: dict) -> None:
                 await game_task
             except asyncio.CancelledError:
                 pass
-            return
+            raise WebSocketDisconnect()
         winner = game_task.result()
     finally:
         out_task.cancel()
         in_task.cancel()
-        await gm.client.aclose()
         logger.close()
     reveal = "；".join(f"{p.name}={ROLE_NAMES[p.role]}" for p in gm.players.values())
+    record["winner"] = winner
+    record["reveal"] = reveal
     await ws.send_text(json.dumps(
         {"t": "game_over", "winner": winner, "reveal": reveal},
         ensure_ascii=False))
-    # 赛后复盘解说（日志已在 finally 中关闭落盘，可直接读取）。
-    # flash reasoning 模型可能要几十秒，前端先展示终局面板，复盘好了再推送。
-    try:
-        md = await generate_review(config, ROOT / "game_log_web.jsonl")
-    except Exception as e:  # 复盘失败不影响终局体验
-        md = f"（复盘生成失败：{e!r}）"
-    try:
-        await ws.send_text(json.dumps({"t": "review", "md": md}, ensure_ascii=False))
-    except Exception:
-        pass  # 客户端已断开
+    return gm, config, human_name, winner, record
+
+
+async def _post_game_loop(ws: WebSocket, gm: GameMaster, human_name: str,
+                          incoming: asyncio.Queue) -> dict:
+    """赛后模式：讨论提问 / 查历史，直到人类发起下一局。返回新的 start 消息。"""
+    while True:
+        m = await incoming.get()
+        t = m.get("t")
+        if t == "start":
+            return m
+        if t == "discuss":
+            await _handle_discuss(ws, gm, human_name, str(m.get("text", "")))
+        elif t == "history":
+            await _send_history_list(ws)
+        elif t == "load_history":
+            await _send_history_game(ws, m.get("id", ""))
 
 
 def main() -> None:

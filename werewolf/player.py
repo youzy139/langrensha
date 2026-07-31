@@ -228,6 +228,30 @@ class PlayerAgent:
         )
         return self._resolve_choice((data or {}).get("shoot"), candidates)
 
+    # ---------- 赛后复盘交流 ----------
+    async def post_game_chat(self, question: str, asker: str) -> str:
+        """游戏结束后，带着全部私密信息回应复盘提问。"""
+        instruction = (
+            f"游戏已经结束，所有身份已经公开。现在是赛后复盘交流时间，"
+            f"{asker} 对大家说：「{question}」。\n"
+            "请坦诚回应：公开你当时掌握的私密信息（身份、夜间行动、验人结果等）、"
+            "你当时的推理过程、以及你为什么那样操作。就像真实玩家赛后聊天一样，"
+            "可以自嘲、可以解释、可以甩锅，不超过 120 字。"
+            '只输出 JSON：{"reply": "你的回应"}'
+        )
+        async def mock():
+            secret = self.private_notes[-1] if self.private_notes else "没有特殊信息"
+            return {"reply": f"我是{self.name}（{ROLE_NAMES[self.role]}）。"
+                             f"我这局的私密信息：{secret}。当时主要跟着局势走，"
+                             f"打得不好多包涵。"}
+        data, _ = await self.client.chat_json(
+            player=self.name, action="post_game_chat", model=self.model,
+            messages=self._context_messages(instruction),
+            required_keys=["reply"], mock_fn=mock,
+            round_no=0, phase="post_game",
+        )
+        return str((data or {}).get("reply") or "（无话可说）")[:150]
+
     # ---------- 工具 ----------
     def _resolve_choice(self, raw, candidates: list[str]) -> Optional[str]:
         """把模型输出模糊匹配到合法候选人。"""

@@ -86,6 +86,24 @@
   #btn-end { background: none; border: 1px solid #bb9af7; color: #bb9af7;
              border-radius: 6px; padding: 3px 10px; font-size: 13px;
              cursor: pointer; display: none; }
+  #hist-list { max-height: 150px; overflow-y: auto; }
+  .hist-item { background: #24283b; border: 1px solid #444; color: #ccc;
+               border-radius: 6px; padding: 6px 10px; margin: 4px 0;
+               font-size: 12px; cursor: pointer; text-align: left; width: 100%; }
+  .hist-item:hover { border-color: #7aa2f7; color: #fff; }
+  #discuss-box { border-top: 1px solid #444; padding-top: 10px; margin-bottom: 12px; }
+  #discuss-log { max-height: 30vh; overflow-y: auto; margin-bottom: 8px; }
+  .dmsg { background: #24283b; border-radius: 6px; padding: 6px 10px;
+          margin: 5px 0; font-size: 13px; line-height: 1.6; }
+  .dmsg b { color: #7aa2f7; }
+  .dmsg.me { background: #2d3a24; }
+  .dmsg.me b { color: #9ece6a; }
+  #discuss-row { display: flex; gap: 8px; }
+  #discuss-in { flex: 1; background: #24283b; border: 1px solid #444; color: #eee;
+                padding: 8px 12px; border-radius: 6px; font-size: 13px; outline: none; }
+  #discuss-send { background: #7aa2f7; color: #14151f; border: none;
+                  padding: 0 16px; border-radius: 6px; font-weight: bold; cursor: pointer; }
+  #discuss-title { font-size: 13px; color: #e0af68; margin-bottom: 6px; }
 </style>
 </head>
 <body>
@@ -115,6 +133,14 @@
     <h2 id="end-title">对局结束</h2>
     <div id="end-reveal"></div>
     <div id="review-box"><span class="loading">🎙️ 解说员复盘生成中…（可以先点下方按钮回看本局对话）</span></div>
+    <div id="discuss-box">
+      <div id="discuss-title">💬 赛后讨论 · 全员已亮身份，随便问（他们会交出自己掌握的信息和推理）</div>
+      <div id="discuss-log"></div>
+      <div id="discuss-row">
+        <input id="discuss-in" placeholder="例如：Carol 你为什么第一晚验 David？">
+        <button id="discuss-send">问全场</button>
+      </div>
+    </div>
     <div id="end-btns">
       <button id="btn-back">📜 回看本局对话</button>
       <button id="btn-again">🔄 再来一局</button>
@@ -143,6 +169,10 @@
       </div>
     </div>
     <button id="startbtn">开始对局</button>
+    <div class="group" style="margin-top:16px">
+      <div class="label">📜 历史对局（点击回看完整对话与复盘）</div>
+      <div id="hist-list"><div style="font-size:12px;color:#666">加载中…</div></div>
+    </div>
   </div>
 </div>
 
@@ -157,7 +187,7 @@ const roleCard = document.getElementById("role-card");
 const roster = document.getElementById("roster");
 const lobby = document.getElementById("lobby");
 
-let ws, selCfg = "6p", selRole = "random", gameEnded = false;
+let ws, selCfg = "6p", selRole = "random", gameEnded = false, liveDiscuss = false;
 
 function mdToHtml(md) {
   const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -235,6 +265,20 @@ function answer(text) {
 sendbtn.onclick = () => { if (textin.value.trim()) { answer(textin.value.trim()); textin.value = ""; } };
 textin.addEventListener("keydown", e => { if (e.key === "Enter") sendbtn.onclick(); });
 
+function connect() {  // 页面加载即建立连接，历史对局不依赖开局
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  ws = new WebSocket(`${proto}://${location.host}/ws`);
+  ws.onmessage = ev => handle(JSON.parse(ev.data));
+  ws.onopen = () => ws.send(JSON.stringify({t: "history"}));
+  ws.onclose = () => { statusEl.textContent = "连接已断开（刷新页面重开）"; };
+}
+connect();
+
+function refreshHistory() {
+  if (ws && ws.readyState === WebSocket.OPEN)
+    ws.send(JSON.stringify({t: "history"}));
+}
+
 document.getElementById("startbtn").onclick = () => {
   lobby.style.display = "none";
   document.getElementById("endpanel").style.display = "none";
@@ -243,15 +287,10 @@ document.getElementById("startbtn").onclick = () => {
   feed.innerHTML = "";
   roleCard.style.display = "none";
   statusEl.textContent = "连接中…";
-  const proto = location.protocol === "https:" ? "wss" : "ws";
-  if (!ws || ws.readyState !== WebSocket.OPEN) {
-    ws = new WebSocket(`${proto}://${location.host}/ws`);
-    ws.onmessage = ev => handle(JSON.parse(ev.data));
-    ws.onopen = () => ws.send(JSON.stringify({t: "start", config: selCfg, role: selRole}));
-    ws.onclose = () => { statusEl.textContent = "连接已断开（刷新页面重开）"; };
-  } else {
-    ws.send(JSON.stringify({t: "start", config: selCfg, role: selRole}));
-  }
+  if (!ws || ws.readyState !== WebSocket.OPEN) connect();
+  const sendStart = () => ws.send(JSON.stringify({t: "start", config: selCfg, role: selRole}));
+  if (ws.readyState === WebSocket.OPEN) sendStart();
+  else ws.onopen = () => { sendStart(); refreshHistory(); };
 };
 
 function handle(m) {
@@ -272,21 +311,86 @@ function handle(m) {
     const who = m.winner === "village" ? "🎉 好人阵营获胜" : "🐺 狼人阵营获胜";
     addMsg(`${who}\n身份揭晓：${m.reveal}`, "public");
     feed.lastChild.classList.add("gameover");
-    // 终局面板：胜负 + 身份揭晓 + 复盘，不遮挡对话记录
+    // 终局面板：胜负 + 身份揭晓 + 复盘 + 赛后讨论，不遮挡对话记录
     gameEnded = true;
+    liveDiscuss = true;
     document.getElementById("end-title").textContent = who;
     document.getElementById("end-reveal").innerHTML =
       "<b>身份揭晓</b><br>" + m.reveal.split("；").map(s => escHtml(s)).join("<br>");
     document.getElementById("review-box").innerHTML =
       '<span class="loading">🎙️ 解说员复盘生成中…（可以先点下方按钮回看本局对话）</span>';
+    document.getElementById("discuss-log").innerHTML = "";
+    document.getElementById("discuss-box").style.display = "block";
     document.getElementById("endpanel").style.display = "flex";
     document.getElementById("btn-end").style.display = "inline-block";
     document.getElementById("startbtn").textContent = "再来一局";
   }
   else if (m.t === "review") {
     document.getElementById("review-box").innerHTML = mdToHtml(m.md);
+    refreshHistory();  // 本局已存档，刷新大厅历史列表
+  }
+  else if (m.t === "discuss_msg") {
+    addDiscuss(m.player + "（" + m.role_name + "）", m.text, false);
+  }
+  else if (m.t === "history_list") {
+    const el = document.getElementById("hist-list");
+    if (!m.games.length) { el.innerHTML = '<div style="font-size:12px;color:#666">还没有对局记录</div>'; return; }
+    el.innerHTML = "";
+    m.games.forEach(g => {
+      const b = document.createElement("button");
+      b.className = "hist-item";
+      const who = g.winner === "village" ? "🎉好人胜" : "🐺狼人胜";
+      b.textContent = `${g.ts} · ${g.cfg === "8p" ? "8人局" : "6人局"} · ${who} · 你是${g.players.find(p => p.name === (g.human || ""))?.role_name || "?"}`;
+      b.onclick = () => ws.send(JSON.stringify({t: "load_history", id: g.id}));
+      el.appendChild(b);
+    });
+  }
+  else if (m.t === "history_game") {  // 回看历史对局：重放对话流 + 结算面板（无讨论）
+    const g = m.game;
+    lobby.style.display = "none";
+    feed.innerHTML = "";
+    gameEnded = true;
+    liveDiscuss = false;
+    g.feed.forEach(e => {
+      if (e.t === "feed") addMsg(e.text, e.kind);
+      else if (e.t === "role") {
+        roleCard.innerHTML = `🎭 本局你的身份：<b>${e.role_name}</b>` +
+          (e.mates ? `<br>🐺 狼队友：${e.mates}` : "");
+        roleCard.style.display = "block";
+      }
+    });
+    const who = g.winner === "village" ? "🎉 好人阵营获胜" : "🐺 狼人阵营获胜";
+    statusEl.textContent = `回看历史对局 · ${g.ts}`;
+    document.getElementById("end-title").textContent = who + "（历史回放）";
+    document.getElementById("end-reveal").innerHTML =
+      "<b>身份揭晓</b><br>" + (g.reveal || "").split("；").map(s => escHtml(s)).join("<br>");
+    document.getElementById("review-box").innerHTML = mdToHtml(g.review || "（本局无复盘）");
+    document.getElementById("discuss-box").style.display = "none";
+    document.getElementById("endpanel").style.display = "flex";
+    document.getElementById("btn-end").style.display = "inline-block";
   }
 }
+
+function addDiscuss(who, text, isMe) {
+  const div = document.createElement("div");
+  div.className = "dmsg" + (isMe ? " me" : "");
+  div.innerHTML = `<b>${escHtml(who)}：</b>${escHtml(text)}`;
+  const log = document.getElementById("discuss-log");
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+}
+
+function sendDiscuss() {
+  const inp = document.getElementById("discuss-in");
+  const q = inp.value.trim();
+  if (!q || !liveDiscuss) return;
+  addDiscuss("你", q, true);
+  ws.send(JSON.stringify({t: "discuss", text: q}));
+  inp.value = "";
+  addDiscuss("系统", "全场玩家思考中…", false);
+}
+document.getElementById("discuss-send").onclick = sendDiscuss;
+document.getElementById("discuss-in").addEventListener("keydown", e => { if (e.key === "Enter") sendDiscuss(); });
 
 function escHtml(s) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -301,6 +405,7 @@ document.getElementById("btn-end").onclick = () => {
 document.getElementById("btn-again").onclick = () => {
   document.getElementById("endpanel").style.display = "none";
   lobby.style.display = "flex";
+  refreshHistory();  // 回大厅时刷新历史列表
 };
 </script>
 </body>

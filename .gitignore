@@ -13,3 +13,6 @@ game_log*.html
 game_log*.review.md
 logs_mock_test/
 webapp/*.log
+
+# Web 端历史对局存档
+webapp/history/
