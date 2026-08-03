@@ -15,6 +15,8 @@ import os
 import re
 from typing import Any, Awaitable, Callable, Optional
 
+from . import env as _env  # noqa: F401  # 导入即加载项目根目录 .env
+
 _JSON_BLOCK_RE = re.compile(r"\{.*\}", re.DOTALL)
 
 
