@@ -4,6 +4,6 @@
   "version": "0.1.0",
   "description": "多Agent狼人杀 · 人机对局 Web 前端（Python FastAPI 后端）",
   "scripts": {
-    "dev": "python server.py"
+    "dev": "C:\\Users\\15214\\AppData\\Roaming\\kimi-desktop\\daimon-share\\daimon\\runtime\\python\\.venv\\Scripts\\python server.py"
   }
 }
