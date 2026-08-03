@@ -1,19 +1,28 @@
 # 🐺 Multi-Agent Werewolf · 多智能体狼人杀
 
 > 让多个 LLM 扮演玩家，在严格信息隔离下自主完成整局狼人杀博弈。
-> 支持跨模型混编对局、批量实验、断点续跑与 AI 解说复盘。
+> 支持跨模型混编对局、批量实验、断点续跑、AI 解说复盘——
+> 以及**你亲自下场**：Web 界面里和 5-7 个 AI 同桌玩狼人杀，当狼、当神、当民随你挑。
 
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![LLM](https://img.shields.io/badge/LLM-OpenAI%20SDK%20%E5%85%BC%E5%AE%B9-orange)
 ![Async](https://img.shields.io/badge/async-asyncio-green)
+![Web](https://img.shields.io/badge/Web-FastAPI%20%2B%20WebSocket-purple)
+![License](https://img.shields.io/badge/license-MIT-lightgrey)
+
+<!-- 截图位：在 GitHub 仓库 docs/images/ 下补两张图后取消注释即可
+![Web 对局界面](docs/images/web_game.png)
+![终局复盘与赛后讨论](docs/images/web_review.png)
+-->
 
 ## 项目亮点
 
+- **🎮 Web 人机对局**：浏览器里和 AI 同桌开局——可指定身份（我要当狼/预言家/女巫/猎人），狼人频道实时私聊、夜间行动 GUI 交互、AI 思考动效、出局状态实时标记；终局自动生成解说复盘，还能在**赛后讨论区**向全场 AI 提问，每个 AI 亮出身份、带着私密信息和推理回应你
 - **严格的信息隔离架构**：GameMaster（上帝）是唯一掌握全量真相的角色；每个 PlayerAgent 只能收到发给自己的信息，私有记忆（身份/验人结果/夜间行动/狼人频道）与公开记忆物理分离，从架构上杜绝信息泄露
 - **多模型混编对抗**：每个玩家可独立配置模型（OpenAI 兼容接口），支持"强模型当狼 vs 弱模型当好人"这类能力不对称实验
 - **工程级健壮性**：每次 LLM 调用带超时 + JSON 结构化解析失败自动重试 + 重试耗尽随机兜底，**50+ 局真实对局无一局中断**；阶段边界 checkpoint 支持断电/断网后精确续跑（记忆、药剂、存活状态全保留）
 - **完整实验闭环**：批量实验脚本（断点续跑 + 胜率统计）→ AI 解说员复盘（基于完整 reasoning 内心链）→ HTML 回放页 → 胜率可视化
-- **完整规则实现**：狼人夜间私密频道协商、预言家验人、女巫双药（同晚限一瓶、仅首夜可自救）、猎人开枪（被毒不能开）、平票处理、屠边胜负判定
+- **完整规则实现**：狼人夜间私密频道协商、预言家验人、女巫双药（同晚限一瓶、仅首夜可自救）、猎人开枪（被毒不能开）、狼人自刀骗解药、平票处理、屠边胜负判定
 
 ## 架构
 
@@ -60,8 +69,10 @@ python main.py --human                # 🧑 人机混合局：你随机替换�
 python main.py --human Carol          # 指定扮演 Carol（身份游戏中揭晓）
 WEREWOLF_MOCK=1 python main.py        # Mock 模式离线测试（无需 API Key）
 
-# Web 人机对局（浏览器游玩，可指定"我要当狼"）
+# Web 人机对局（浏览器游玩，推荐！）
 cd webapp && python server.py --port 7100   # 打开 http://localhost:7100/
+# 大厅可选 6/8 人局、指定身份（当狼/预言家/女巫/猎人/平民）；
+# 终局自动出 AI 解说复盘，赛后可向全场 AI 提问复盘，历史对局随时回看
 ```
 
 批量实验（支持断点续跑，可反复调用直到跑满）：
@@ -104,6 +115,9 @@ python run_experiment.py --config config_pro_wolves_8p.yaml \
 │   └── replay.py              # HTML 回放页生成
 ├── docs/EXPERIMENT_REPORT.md  # 完整实验报告
 ├── docs/PROJECT_GUIDE.md      # 代码精读指南（学习向）
+├── webapp/                    # Web 人机对局：FastAPI + WebSocket
+│   ├── server.py              # 对局服务器：角色洗牌/思考动效/赛后讨论/历史存档
+│   └── index.html             # 单页前端：大厅/对局/终局结算/复盘/讨论区
 └── logs*/                     # 各实验组对局日志与统计
 ```
 
@@ -113,6 +127,8 @@ python run_experiment.py --config config_pro_wolves_8p.yaml \
 - [x] 8 人局 + 猎人
 - [x] 多模型混编与批量实验
 - [x] AI 解说复盘 / HTML 回放
+- [x] Web 人机对局（指定身份 / 狼人频道 / 思考动效 / 历史回看 / 赛后讨论）
+- [x] 狼人自刀等进阶战术规则
 - [ ] 更大规模样本（50-100 局/组）收窄置信区间
 - [ ] Elo 评分体系：模型间循环赛排名
 - [ ] 更多角色（守卫/白痴/骑士）与 12 人标准局
