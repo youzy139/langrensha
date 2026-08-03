@@ -24,8 +24,9 @@ _COMMENTATOR_PROMPT = (
 )
 
 
-def build_digest(log_path: str | Path) -> str:
-    """把 JSONL 日志提炼成解说员可读的紧凑战报。"""
+def build_digest(log_path: str | Path, include_reasoning: bool = True) -> str:
+    """把 JSONL 日志提炼成解说员可读的紧凑战报。
+    include_reasoning=False 时去掉内心戏（超时重试的精简模式）。"""
     lines: list[str] = []
     for line in open(log_path, "r", encoding="utf-8"):
         e = json.loads(line)
@@ -59,7 +60,7 @@ def build_digest(log_path: str | Path) -> str:
         elif t == "game_end":
             winner = "好人阵营" if e.get("winner") == "village" else "狼人阵营"
             lines.append(f"【结局】{winner}获胜（{e.get('reason', '')}）")
-        elif t == "llm_call" and e.get("success") and e.get("reasoning"):
+        elif t == "llm_call" and include_reasoning and e.get("success") and e.get("reasoning"):
             reasoning = e["reasoning"][:_REASONING_MAX]
             lines.append(f"  【内心】{e['player']}({e['action']}): {reasoning}")
     return "\n".join(lines)
@@ -77,15 +78,25 @@ async def generate_review(config: dict, log_path: str | Path,
                 "以下为对局事实摘要：\n\n```\n" + digest + "\n```")
 
     model = config.get("llm", {}).get("default_model", "gpt-4o-mini")
-    messages = [
-        {"role": "system", "content": _COMMENTATOR_PROMPT},
-        {"role": "user", "content": f"对局摘要：\n{digest}"},
-    ]
+    review_tokens = config.get("llm", {}).get("review_max_tokens", 8000)
+
+    async def _call(text: str) -> str:
+        messages = [
+            {"role": "system", "content": _COMMENTATOR_PROMPT},
+            {"role": "user", "content": f"对局摘要：\n{text}"},
+        ]
+        # 8 人局摘要较长，复盘专用超时放宽到 120 秒
+        content, _ = await client.chat(model, messages,
+                                       max_tokens=review_tokens, timeout=120)
+        return content
+
     try:
-        review_tokens = config.get("llm", {}).get("review_max_tokens", 8000)
-        content, _ = await client.chat(model, messages, max_tokens=review_tokens)
-    except Exception as e:
-        return f"# 复盘报告生成失败\n\nLLM 调用出错：`{e!r}`\n\n对局摘要：\n\n```\n{digest}\n```"
+        content = await _call(digest)
+    except Exception:
+        try:  # 超时/出错重试一次：去掉内心戏精简摘要
+            content = await _call(build_digest(log_path, include_reasoning=False))
+        except Exception as e:
+            return f"# 复盘报告生成失败\n\nLLM 调用出错：`{e!r}`\n\n对局摘要：\n\n```\n{digest}\n```"
     if not content:
         return ("# 复盘报告生成失败\n\nLLM 返回空内容（可尝试调大 max_tokens）。\n\n"
                 "对局摘要：\n\n```\n" + digest + "\n```")

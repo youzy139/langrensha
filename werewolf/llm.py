@@ -77,7 +77,8 @@ class LLMClient:
             self._client = None
 
     async def chat(self, model: str, messages: list[dict],
-                   max_tokens: Optional[int] = None) -> tuple[str, str]:
+                   max_tokens: Optional[int] = None,
+                   timeout: Optional[float] = None) -> tuple[str, str]:
         """返回 (content, reasoning)。reasoning 模型可能把预算耗在思考上，
         导致 content 为空——调用方据此重试。"""
         client = self._get_client()
@@ -88,7 +89,7 @@ class LLMClient:
                 temperature=self.temperature,
                 max_tokens=max_tokens or self.max_tokens,
             ),
-            timeout=self.timeout,
+            timeout=timeout or self.timeout,
         )
         msg = resp.choices[0].message
         return msg.content or "", getattr(msg, "reasoning_content", None) or ""
