@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import random
 import sys
 import time
@@ -403,11 +404,46 @@ async def _post_game_loop(ws: WebSocket, gm: GameMaster, human_name: str,
             await _send_history_game(ws, m.get("id", ""))
 
 
+def _ensure_port_free(port: int) -> None:
+    """启动前清掉占用端口的旧服务器进程。
+
+    否则预览卡片/手动重启会撞上上一个还在跑的旧代码实例，
+    表现为"重启了但界面还是旧的"。只杀占用同一端口的进程，不碰别的。
+    """
+    import socket
+    import subprocess
+
+    def in_use() -> bool:
+        with socket.socket() as s:
+            return s.connect_ex(("127.0.0.1", port)) == 0
+
+    if not in_use():
+        return
+    try:
+        out = subprocess.run(["netstat", "-ano"],
+                             capture_output=True, text=True).stdout
+        for line in out.splitlines():
+            parts = line.split()
+            if (len(parts) >= 5 and "LISTENING" in line
+                    and parts[1].endswith(f":{port}")):
+                pid = parts[-1]
+                if pid.isdigit() and int(pid) != os.getpid():
+                    subprocess.run(["taskkill", "/PID", pid, "/F"],
+                                   capture_output=True)
+        for _ in range(25):  # 最多等 5 秒端口释放
+            if not in_use():
+                break
+            time.sleep(0.2)
+    except Exception:
+        pass  # 清理失败就交给 uvicorn 正常报错
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=7100)
     args = ap.parse_args()
+    _ensure_port_free(args.port)
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
 
 
