@@ -97,6 +97,11 @@ class WebHumanAgent(PlayerAgent):
         super().note(line)
         self._feed.put_nowait({"t": "feed", "kind": "private", "text": line})
 
+    def wolf_hear(self, line: str) -> None:
+        """队友在狼人频道发言：实时推到公屏（仅自己是狼时才会有此消息）。"""
+        self._feed.put_nowait({"t": "feed", "kind": "wolf",
+                               "text": "🐺 狼人频道 · " + line})
+
     async def _ask(self, prompt: str, candidates: list[str] | None = None,
                    allow_abstain: bool = True) -> str:
         await self._feed.put({
@@ -110,8 +115,9 @@ class WebHumanAgent(PlayerAgent):
         return str(ans.get("text", "")).strip()
 
     async def _ask_choice(self, prompt: str, candidates: list[str],
-                          allow_abstain: bool = True) -> str | None:
-        pool = [c for c in candidates if c != self.name]
+                          allow_abstain: bool = True,
+                          exclude_self: bool = True) -> str | None:
+        pool = [c for c in candidates if not (exclude_self and c == self.name)]
         while True:
             raw = await self._ask(prompt, pool, allow_abstain)
             if allow_abstain and raw in ("", "弃权"):
@@ -137,7 +143,10 @@ class WebHumanAgent(PlayerAgent):
         return (msg or "……")[:50]
 
     async def werewolf_kill_vote(self, channel, alive_targets, round_no):
-        c = await self._ask_choice("今晚刀谁？", alive_targets, allow_abstain=False)
+        # 自刀局候选含狼人：可以刀队友甚至刀自己（骗解药/做高身份）
+        c = await self._ask_choice(
+            "今晚刀谁？（候选里有狼人 = 本局允许自刀，可骗解药/做高身份）",
+            alive_targets, allow_abstain=False, exclude_self=False)
         return c or self.rng.choice(alive_targets)
 
     async def seer_check(self, candidates, round_no):

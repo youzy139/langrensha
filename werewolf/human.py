@@ -36,6 +36,10 @@ class HumanAgent(PlayerAgent):
         super().note(line)
         print(f"  🔒 [仅你可见] {line}", flush=True)
 
+    def wolf_hear(self, line: str) -> None:
+        """队友在狼人频道发言：实时打印（仅狼可见）。"""
+        print(f"  🐺 [狼人频道] {line}", flush=True)
+
     # ---------- 输入工具 ----------
     async def _ask(self, prompt: str) -> str:
         """异步包装阻塞式 input，避免卡住事件循环。"""

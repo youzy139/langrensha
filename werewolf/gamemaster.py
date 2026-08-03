@@ -27,6 +27,7 @@ class GameMaster:
         game_cfg = config.get("game", {})
         self.max_rounds = game_cfg.get("max_rounds", 5)
         self.wolf_discuss_rounds = game_cfg.get("werewolf_discuss_rounds", 1)
+        self.allow_self_kill = game_cfg.get("allow_self_kill", False)  # 允许狼人自刀
         self.logger = logger
         self.rng = rng or random.Random()
         self.client = LLMClient(config, logger)
@@ -35,6 +36,7 @@ class GameMaster:
         self.witch_antidote = True
         self.witch_poison = True
         self.winner: Optional[str] = None
+        self.wolf_channel_log: list[str] = []  # 狼人频道全程记录（赛后公屏回放用）
         self.checkpoint_path = checkpoint_path
         self.human_agent_cls = human_agent_cls      # Web 端可注入自定义人类 Agent
         self.human_kwargs = human_kwargs or {}
@@ -146,6 +148,8 @@ class GameMaster:
         reveal = "；".join(f"{n}={ROLE_NAMES[s['role']]}{'存活' if s['alive'] else '出局'}"
                            for n, s in summary.items())
         self.logger.print(f"身份揭晓：{reveal}")
+        if self.wolf_channel_log:  # 赛后公开狼人频道（游戏结束时才能见光）
+            self.logger.print("\n🐺 狼人频道回放：\n" + "\n".join(self.wolf_channel_log))
         return winner
 
     # ---------- 夜晚 ----------
@@ -174,7 +178,10 @@ class GameMaster:
 
         # 1. 狼人协商 + 刀人
         wolves = [p for p in self.alive() if p.role == "werewolf"]
-        targets = [p.name for p in self.alive() if p.role != "werewolf"]
+        if self.allow_self_kill:  # 允许自刀：狼人也在候选刀口内（骗解药/做高身份）
+            targets = self.alive_names()
+        else:
+            targets = [p.name for p in self.alive() if p.role != "werewolf"]
         killed: Optional[str] = None
         if wolves and targets:
             channel: list[str] = []
@@ -183,6 +190,11 @@ class GameMaster:
                     msg = await w.werewolf_discuss(channel, targets, r)
                     line = f"{w.name}: {msg}"
                     channel.append(line)
+                    self.wolf_channel_log.append(f"[第{r}夜] {line}")
+                    # 实时同步给其他狼（人类狼靠这个在公屏看到队友发言）
+                    for w2 in wolves:
+                        if w2 is not w:
+                            w2.wolf_hear(line)
                     self.logger.event("werewolf_channel", round=r, speaker=w.name,
                                       message=msg, visibility="werewolf_only")
             # 讨论结束后刀人投票并行（讨论有依赖保持串行）

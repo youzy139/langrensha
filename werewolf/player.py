@@ -56,6 +56,10 @@ class PlayerAgent:
         """写入私密信息。"""
         self.private_notes.append(line)
 
+    def wolf_hear(self, line: str) -> None:
+        """狼人频道来了新消息（基类空实现：AI 狼通过 channel 参数看记录；
+        人类玩家子类覆写，把频道消息实时显示出来）。"""
+
     def _context_messages(self, instruction: str) -> list[dict]:
         user = (
             f"【公开信息】\n{_format_public(self.public_log)}\n\n"
@@ -75,6 +79,8 @@ class PlayerAgent:
             "发言要求：结合目前所有公开信息给出实质内容——你怀疑谁、依据哪条发言/投票/死讯、"
             "你的投票倾向；如果你决定亮身份或跳身份（含战术性跳假身份），"
             "把身份信息和查验/经历讲完整。禁止只说「我是好人过」这类划水发言。"
+            "可以用 **粗体** 标出最关键的信息（你跳的身份、查杀对象、投票目标），"
+            "方便大家快速抓重点。"
             '只输出 JSON：{"speech": "你的发言内容"}'
         )
         async def mock():
@@ -131,9 +137,13 @@ class PlayerAgent:
     async def werewolf_discuss(self, channel: list[str], alive_targets: list[str],
                                round_no: int) -> str:
         history = "\n".join(channel) if channel else "（频道暂无消息）"
+        wolves_in_targets = [t for t in alive_targets
+                             if t == self.name or t in self.mates]
+        target_desc = ("存活玩家（含狼人，本局允许自刀）" if wolves_in_targets
+                       else "非狼人存活玩家")
         instruction = (
             f"现在是第 {round_no} 轮夜晚，狼人频道聊天记录：\n{history}\n"
-            f"可刀目标（非狼人存活玩家）：{'、'.join(alive_targets)}。"
+            f"可刀目标（{target_desc}）：{'、'.join(alive_targets)}。"
             "请对队友说一句简短的战术建议（不超过 50 字，此频道只有狼人可见）。"
             '只输出 JSON：{"message": "你想说的话"}'
         )
@@ -150,9 +160,15 @@ class PlayerAgent:
     async def werewolf_kill_vote(self, channel: list[str], alive_targets: list[str],
                                  round_no: int) -> str:
         history = "\n".join(channel) if channel else "（频道暂无消息）"
+        wolves_in_targets = [t for t in alive_targets
+                             if t == self.name or t in self.mates]
+        self_kill_hint = (
+            "列表中包含狼人（本局允许自刀）：刀一名狼人可以骗女巫解药、"
+            "做高其余狼的身份，是合法战术；没有把握时正常刀好人。"
+            if wolves_in_targets else "")
         instruction = (
             f"狼人频道讨论记录：\n{history}\n"
-            f"请投票选择今晚的刀人目标：{'、'.join(alive_targets)}。"
+            f"请投票选择今晚的刀人目标：{'、'.join(alive_targets)}。{self_kill_hint}"
             '只输出 JSON：{"kill": "玩家代号"}'
         )
         async def mock():

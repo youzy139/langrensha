@@ -229,7 +229,8 @@ function addMsg(text, kind) {
   const div = document.createElement("div");
   div.className = "msg " + (kind || "public");
   if (text.startsWith("-----") || text.startsWith("=====")) div.className = "msg system";
-  div.textContent = text;
+  // 转义后把 **关键信息** 渲染成粗体，长发言一眼抓到重点
+  div.innerHTML = escHtml(text).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
   feed.appendChild(div);
   feed.scrollTop = feed.scrollHeight;
 }
