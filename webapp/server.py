@@ -78,6 +78,19 @@ class WebLogger(GameLogger):
         if text:
             self.feed_q.put_nowait({"t": "feed", "kind": "public", "text": text})
 
+    def event(self, event_type, **payload):
+        super().event(event_type, **payload)
+        # 把死亡信息结构化推给前端，右侧玩家栏实时标记"已出局"
+        dead: list[str] = []
+        if event_type == "day_announce":
+            dead = payload.get("deaths") or []
+        elif event_type == "day_vote" and payload.get("exiled"):
+            dead = [payload["exiled"]]
+        elif event_type == "hunter_shot" and payload.get("shot"):
+            dead = [payload["shot"]]
+        for name in dead:
+            self.feed_q.put_nowait({"t": "dead", "name": name})
+
 
 class WebHumanAgent(PlayerAgent):
     """人类玩家（Web 版）：决策通过 WebSocket 问答完成。"""

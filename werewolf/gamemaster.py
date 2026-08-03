@@ -197,6 +197,12 @@ class GameMaster:
                             w2.wolf_hear(line)
                     self.logger.event("werewolf_channel", round=r, speaker=w.name,
                                       message=msg, visibility="werewolf_only")
+            if channel:
+                # 频道讨论写进每只狼的私密记忆——否则白天它们会忘了夜里的战术
+                # （比如说好谁跳预言家，白天必须执行）
+                recap = "\n".join(channel)
+                for w in wolves:
+                    w.note(f"第{r}轮夜晚狼人频道讨论记录：\n{recap}")
             # 讨论结束后刀人投票并行（讨论有依赖保持串行）
             votes = await asyncio.gather(
                 *[w.werewolf_kill_vote(channel, targets, r) for w in wolves])

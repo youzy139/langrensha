@@ -29,6 +29,9 @@
                border-radius: 8px; padding: 12px; margin-bottom: 12px;
                font-size: 14px; line-height: 1.7; display: none; }
   #roster div { font-size: 13px; padding: 3px 0; color: #aaa; }
+  #roster div.dead { color: #555; text-decoration: line-through; }
+  #roster div.dead::after { content: "（已出局）"; text-decoration: none;
+                            color: #f7768e; font-size: 11px; }
   #thinking-line { display: none; align-items: center; gap: 8px;
                   padding: 6px 18px; background: #1d1f2e; font-size: 13px;
                   color: #7aa2f7; border-top: 1px solid #333; }
@@ -199,6 +202,14 @@ const roster = document.getElementById("roster");
 const lobby = document.getElementById("lobby");
 
 let ws, selCfg = "6p", selRole = "random", gameEnded = false, liveDiscuss = false;
+let rosterPlayers = [], myName = "";
+
+function renderRoster(me) {
+  if (me) myName = me;
+  roster.innerHTML = "<b style='font-size:13px'>玩家</b>" + rosterPlayers.map(p =>
+    `<div class="${p.alive ? "" : "dead"}">${p.name === myName ? "🧑 " + escHtml(p.name) + "（你）" : "🤖 " + escHtml(p.name)}</div>`
+  ).join("");
+}
 
 function mdToHtml(md) {
   const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -330,8 +341,12 @@ function handle(m) {
   }
   else if (m.t === "started") {
     statusEl.textContent = `对局进行中 · 你是 ${m.name}`;
-    roster.innerHTML = "<b style='font-size:13px'>玩家</b>" +
-      m.players.map(p => `<div>${p === m.name ? "🧑 " + p + "（你）" : "🤖 " + p}</div>`).join("");
+    rosterPlayers = m.players.map(name => ({name, alive: true}));
+    renderRoster(m.name);
+  }
+  else if (m.t === "dead") {
+    const p = rosterPlayers.find(p => p.name === m.name);
+    if (p) { p.alive = false; renderRoster(myName); }
   }
   else if (m.t === "game_over") {
     statusEl.textContent = "对局结束";

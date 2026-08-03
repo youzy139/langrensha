@@ -26,6 +26,18 @@ def _format_private(private_notes: list[str]) -> str:
     return "\n".join(private_notes)
 
 
+def trim_speech(text: str, max_chars: int) -> str:
+    """超长发言在句尾标点处截断，避免半句话切断。"""
+    if len(text) <= max_chars:
+        return text
+    cut = text[:max_chars]
+    for sep in ("。", "！", "？", "!", "?", "；", ";"):
+        idx = cut.rfind(sep)
+        if idx >= max_chars * 0.5:  # 至少保住一半内容，防止一句话就爆长
+            return cut[: idx + 1]
+    return cut
+
+
 class PlayerAgent:
     def __init__(self, name: str, role: str, model: str, all_players: list[str],
                  mates: list[str], client: LLMClient, speech_max_chars: int = 200,
@@ -80,7 +92,7 @@ class PlayerAgent:
             "你的投票倾向；如果你决定亮身份或跳身份（含战术性跳假身份），"
             "把身份信息和查验/经历讲完整。禁止只说「我是好人过」这类划水发言。"
             "可以用 **粗体** 标出最关键的信息（你跳的身份、查杀对象、投票目标），"
-            "方便大家快速抓重点。"
+            "方便大家快速抓重点。临近字数上限时先收尾给结论，确保发言完整结束。"
             '只输出 JSON：{"speech": "你的发言内容"}'
         )
         async def mock():
@@ -112,7 +124,7 @@ class PlayerAgent:
                 speech = raw.strip().strip('"') or None
             except Exception:
                 speech = None
-        return str(speech or "（思考过载，发言略过）")[: self.speech_max_chars]
+        return trim_speech(str(speech or "（思考过载，发言略过）"), self.speech_max_chars)
 
     # ---------- 投票放逐 ----------
     async def vote(self, candidates: list[str], round_no: int) -> Optional[str]:
