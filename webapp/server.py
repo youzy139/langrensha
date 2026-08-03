@@ -289,6 +289,31 @@ async def _play_one_game(ws: WebSocket, start_msg: dict,
     gm = GameMaster(config, logger, rng=rng,
                     human_agent_cls=WebHumanAgent,
                     human_kwargs={"feed_q": feed_q, "inbox": inbox})
+
+    # LLM 调用状态 → 前端"正在思考"提示。
+    # 注意：夜间动作按人名显示会泄露身份（谁在验人=谁是预言家），只给通用提示。
+    night_active = {"n": 0}
+
+    def on_llm_status(player: str, action: str, phase: str, on: bool) -> None:
+        if phase.startswith("night"):
+            night_active["n"] = max(0, night_active["n"] + (1 if on else -1))
+            if night_active["n"] == 1 and on:
+                feed_q.put_nowait({"t": "thinking", "on": True,
+                                   "label": "🌙 夜晚行动中"})
+            elif night_active["n"] == 0 and not on:
+                feed_q.put_nowait({"t": "thinking", "on": False, "label": ""})
+            return
+        label = {
+            "day_speech": f"💭 {player} 正在组织发言",
+            "day_vote": f"🗳️ {player} 正在思考投票",
+            "hunter_shot": f"🔫 {player} 正在考虑开枪",
+            "post_game": "💬 大家正在组织语言",
+        }.get(phase)
+        if label is not None:
+            feed_q.put_nowait({"t": "thinking", "on": on,
+                               "label": label if on else ""})
+
+    gm.client.on_status = on_llm_status
     human_name = next(p["name"] for p in config["players"] if p.get("human"))
     record["human"] = human_name
     record["players"] = [{"name": p["name"], "role": p["role"],

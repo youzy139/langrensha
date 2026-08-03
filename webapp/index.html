@@ -29,6 +29,16 @@
                border-radius: 8px; padding: 12px; margin-bottom: 12px;
                font-size: 14px; line-height: 1.7; display: none; }
   #roster div { font-size: 13px; padding: 3px 0; color: #aaa; }
+  #thinking-line { display: none; align-items: center; gap: 8px;
+                  padding: 6px 18px; background: #1d1f2e; font-size: 13px;
+                  color: #7aa2f7; border-top: 1px solid #333; }
+  .spinner { width: 12px; height: 12px; border: 2px solid #364a82;
+             border-top-color: #7aa2f7; border-radius: 50%;
+             animation: spin 0.8s linear infinite; flex: none; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .dots::after { content: ""; animation: dots 1.2s steps(4) infinite; }
+  @keyframes dots { 0% { content: ""; } 25% { content: "."; }
+                    50% { content: ".."; } 75% { content: "..."; } }
   #inputbar { padding: 10px 14px; background: #1d1f2e;
               border-top: 1px solid #333; }
   #ask-prompt { font-size: 14px; color: #e0af68; margin-bottom: 8px;
@@ -119,6 +129,7 @@
     <div id="roster"></div>
   </div>
 </main>
+<div id="thinking-line"><span class="spinner"></span><span id="thinking-text"></span><span class="dots"></span></div>
 <div id="inputbar">
   <div id="ask-prompt"></div>
   <div id="choices"></div>
@@ -259,7 +270,21 @@ function showAsk(m) {
 
 function answer(text) {
   ws.send(JSON.stringify({t: "answer", text}));
+  // 答完立刻收起提问区（比如女巫用完毒药，按钮不再挂着）
+  askPrompt.style.display = "none";
+  choicesEl.style.display = "none";
+  choicesEl.innerHTML = "";
   setWaiting(true);
+}
+
+function showThinking(on, label) {
+  const el = document.getElementById("thinking-line");
+  if (on && label) {
+    document.getElementById("thinking-text").textContent = label;
+    el.style.display = "flex";
+  } else {
+    el.style.display = "none";
+  }
 }
 
 sendbtn.onclick = () => { if (textin.value.trim()) { answer(textin.value.trim()); textin.value = ""; } };
@@ -295,6 +320,7 @@ document.getElementById("startbtn").onclick = () => {
 
 function handle(m) {
   if (m.t === "feed") addMsg(m.text, m.kind);
+  else if (m.t === "thinking") showThinking(m.on, m.label);
   else if (m.t === "ask") { statusEl.textContent = "等待你的决策…"; showAsk(m); }
   else if (m.t === "role") {
     roleCard.innerHTML = `🎭 你的身份：<b>${m.role_name}</b>` +
@@ -308,6 +334,7 @@ function handle(m) {
   }
   else if (m.t === "game_over") {
     statusEl.textContent = "对局结束";
+    showThinking(false);
     const who = m.winner === "village" ? "🎉 好人阵营获胜" : "🐺 狼人阵营获胜";
     addMsg(`${who}\n身份揭晓：${m.reveal}`, "public");
     feed.lastChild.classList.add("gameover");
@@ -348,6 +375,7 @@ function handle(m) {
   else if (m.t === "history_game") {  // 回看历史对局：重放对话流 + 结算面板（无讨论）
     const g = m.game;
     lobby.style.display = "none";
+    showThinking(false);
     feed.innerHTML = "";
     gameEnded = true;
     liveDiscuss = false;
@@ -387,7 +415,6 @@ function sendDiscuss() {
   addDiscuss("你", q, true);
   ws.send(JSON.stringify({t: "discuss", text: q}));
   inp.value = "";
-  addDiscuss("系统", "全场玩家思考中…", false);
 }
 document.getElementById("discuss-send").onclick = sendDiscuss;
 document.getElementById("discuss-in").addEventListener("keydown", e => { if (e.key === "Enter") sendDiscuss(); });

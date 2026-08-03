@@ -53,6 +53,8 @@ class LLMClient:
         self.max_retries = llm_cfg.get("max_retries", 2)
         self.logger = logger
         self.mock = os.environ.get("WEREWOLF_MOCK", "") == "1"
+        # 状态回调：fn(player, action, phase, on)，用于前端"正在思考"提示
+        self.on_status: Optional[Callable[[str, str, str, bool], None]] = None
         self._client = None
 
     def _get_client(self):
@@ -108,6 +110,36 @@ class LLMClient:
         Mock 模式直接调用 mock_fn()。真实模式解析失败自动重试，
         重试时把错误反馈追加进 messages，让模型自我修正。
         """
+        self._emit_status(player, action, phase, True)
+        try:
+            return await self._chat_json_inner(
+                player=player, action=action, model=model, messages=messages,
+                required_keys=required_keys, mock_fn=mock_fn,
+                round_no=round_no, phase=phase,
+            )
+        finally:
+            self._emit_status(player, action, phase, False)
+
+    def _emit_status(self, player: str, action: str, phase: str, on: bool) -> None:
+        cb = self.on_status
+        if cb:
+            try:
+                cb(player, action, phase, on)
+            except Exception:
+                pass
+
+    async def _chat_json_inner(
+        self,
+        *,
+        player: str,
+        action: str,
+        model: str,
+        messages: list[dict],
+        required_keys: list[str],
+        mock_fn: Optional[Callable[[], Awaitable[dict]]] = None,
+        round_no: int = 0,
+        phase: str = "",
+    ) -> tuple[Optional[dict], str]:
         if self.mock:
             data = await mock_fn() if mock_fn else {}
             raw = json.dumps(data, ensure_ascii=False)
@@ -119,7 +151,9 @@ class LLMClient:
         last_reasoning = ""
         for attempt in range(self.max_retries + 1):
             try:
-                last_raw, last_reasoning = await self.chat(model, msgs)
+                # 空 content 多半是 reasoning 模型把预算耗在思考上：重试时加大 max_tokens
+                grow = self.max_tokens * 2 if (attempt > 0 and not last_raw) else None
+                last_raw, last_reasoning = await self.chat(model, msgs, max_tokens=grow)
             except Exception as e:  # 超时 / 网络 / API 错误
                 self._log_call(player, action, model, msgs, f"ERROR: {e!r}", None,
                                False, round_no, phase, attempt)

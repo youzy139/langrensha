@@ -90,8 +90,23 @@ class PlayerAgent:
             required_keys=["speech"], mock_fn=mock,
             round_no=round_no, phase="day_speech",
         )
-        speech = (data or {}).get("speech") or "（思考过载，发言略过）"
-        return str(speech)[: self.speech_max_chars]
+        speech = (data or {}).get("speech")
+        if not speech:
+            # 兜底通道：JSON 全部失败时，让模型直接说人话（不要任何格式），
+            # 避免「思考过载」破坏游戏体验
+            try:
+                raw, _ = await self.client.chat(
+                    self.model,
+                    self._context_messages(
+                        f"现在是第 {round_no} 轮白天，轮到你发言。"
+                        f"直接用一两句话发言（不超过 {self.speech_max_chars} 字），"
+                        "不要输出 JSON、不要解释、不要前缀。"),
+                    max_tokens=self.client.max_tokens * 2,
+                )
+                speech = raw.strip().strip('"') or None
+            except Exception:
+                speech = None
+        return str(speech or "（思考过载，发言略过）")[: self.speech_max_chars]
 
     # ---------- 投票放逐 ----------
     async def vote(self, candidates: list[str], round_no: int) -> Optional[str]:

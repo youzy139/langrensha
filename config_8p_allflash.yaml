@@ -11,7 +11,7 @@ llm:
   temperature: 0.8
   max_tokens: 1500
   timeout_seconds: 60
-  max_retries: 2
+  max_retries: 3
 
 players:
   - name: Alice
