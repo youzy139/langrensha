@@ -107,9 +107,10 @@ class WebHumanAgent(PlayerAgent):
             "mates": "、".join(self.mates),
         })
 
-    def note(self, line: str) -> None:
-        super().note(line)
-        self._feed.put_nowait({"t": "feed", "kind": "private", "text": line})
+    def note(self, line: str, display: bool = True) -> None:
+        super().note(line, display=display)
+        if display:
+            self._feed.put_nowait({"t": "feed", "kind": "private", "text": line})
 
     def wolf_hear(self, line: str) -> None:
         """队友在狼人频道发言：实时推到公屏（仅自己是狼时才会有此消息）。"""
@@ -150,11 +151,12 @@ class WebHumanAgent(PlayerAgent):
         return await self._ask_choice(f"投票放逐（第 {round_no} 轮）", candidates)
 
     async def werewolf_discuss(self, channel, alive_targets, round_no):
-        if channel:
-            await self._feed.put({"t": "feed", "kind": "wolf",
-                                  "text": "狼人频道：\n" + "\n".join(channel)})
-        msg = await self._ask(f"狼人频道发言（第 {round_no} 夜，≤50 字）")
-        return (msg or "……")[:50]
+        # 频道消息已通过 wolf_hear 实时推送，这里不再整段重复展示
+        msg = (await self._ask(f"狼人频道发言（第 {round_no} 夜，≤50 字）") or "……")[:50]
+        # 自己的发言也回显进频道流（wolf_hear 只推队友的消息）
+        self._feed.put_nowait({"t": "feed", "kind": "wolf",
+                               "text": f"🐺 狼人频道 · {self.name}（你）: {msg}"})
+        return msg
 
     async def werewolf_kill_vote(self, channel, alive_targets, round_no):
         # 自刀局候选含狼人：可以刀队友甚至刀自己（骗解药/做高身份）

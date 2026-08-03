@@ -32,9 +32,10 @@ class HumanAgent(PlayerAgent):
         print("=" * 50 + "\n", flush=True)
 
     # ---------- 信息接收：私密信息实时打印（公开信息由上帝统一打印） ----------
-    def note(self, line: str) -> None:
-        super().note(line)
-        print(f"  🔒 [仅你可见] {line}", flush=True)
+    def note(self, line: str, display: bool = True) -> None:
+        super().note(line, display=display)
+        if display:
+            print(f"  🔒 [仅你可见] {line}", flush=True)
 
     def wolf_hear(self, line: str) -> None:
         """队友在狼人频道发言：实时打印（仅狼可见）。"""
@@ -78,10 +79,8 @@ class HumanAgent(PlayerAgent):
 
     async def werewolf_discuss(self, channel: list[str], alive_targets: list[str],
                                round_no: int) -> str:
+        # 频道消息已通过 wolf_hear 实时打印，这里不再整段重复
         print(f"\n🐺 狼人频道（第 {round_no} 夜，只有狼人可见）")
-        if channel:
-            for line in channel:
-                print(f"   {line}")
         msg = await self._ask("你对队友说（≤50 字）> ")
         return (msg or "……")[:50]
 

@@ -202,7 +202,8 @@ class GameMaster:
                 # （比如说好谁跳预言家，白天必须执行）
                 recap = "\n".join(channel)
                 for w in wolves:
-                    w.note(f"第{r}轮夜晚狼人频道讨论记录：\n{recap}")
+                    # display=False：人类狼已实时看过频道消息，回顾只进记忆不上屏
+                    w.note(f"第{r}轮夜晚狼人频道讨论记录：\n{recap}", display=False)
             # 讨论结束后刀人投票并行（讨论有依赖保持串行）
             votes = await asyncio.gather(
                 *[w.werewolf_kill_vote(channel, targets, r) for w in wolves])

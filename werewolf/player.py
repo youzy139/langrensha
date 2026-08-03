@@ -64,8 +64,9 @@ class PlayerAgent:
         """接收 GameMaster 广播的公开信息。"""
         self.public_log.append(line)
 
-    def note(self, line: str) -> None:
-        """写入私密信息。"""
+    def note(self, line: str, display: bool = True) -> None:
+        """写入私密信息。display=False 表示只进记忆、不在人类界面上显示
+        （用于狼人频道回顾等人类已实时看过的内容）。"""
         self.private_notes.append(line)
 
     def wolf_hear(self, line: str) -> None:
