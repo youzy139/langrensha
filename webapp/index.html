@@ -70,6 +70,7 @@
   #lobby .opt { background: #24283b; border: 1px solid #444; color: #ddd;
                 padding: 7px 14px; border-radius: 6px; cursor: pointer; font-size: 14px; }
   #lobby .opt.sel { background: #364a82; border-color: #7aa2f7; color: #fff; }
+  #lobby .opt.disabled { opacity: 0.35; cursor: not-allowed; }
   #startbtn { width: 100%; background: #9ece6a; color: #14151f; border: none;
               padding: 11px; border-radius: 8px; font-size: 16px;
               font-weight: bold; cursor: pointer; margin-top: 6px; }
@@ -180,7 +181,7 @@
         <button class="opt" data-v="seer">🔮 预言家</button>
         <button class="opt" data-v="witch">🧪 女巫</button>
         <button class="opt" data-v="villager">👨‍🌾 平民</button>
-        <button class="opt" data-v="hunter">🔫 猎人（8人局）</button>
+        <button class="opt" data-v="hunter" title="6 人局没有猎人，请选 8 人局">🔫 猎人（8人局）</button>
       </div>
     </div>
     <button id="startbtn">开始对局</button>
@@ -228,14 +229,29 @@ function mdToHtml(md) {
 
 function bindOpts(id, cb) {
   document.getElementById(id).addEventListener("click", e => {
-    if (!e.target.classList.contains("opt")) return;
+    if (!e.target.classList.contains("opt") || e.target.classList.contains("disabled")) return;
     document.querySelectorAll("#" + id + " .opt").forEach(b => b.classList.remove("sel"));
     e.target.classList.add("sel");
     cb(e.target.dataset.v);
   });
 }
-bindOpts("cfg-opts", v => selCfg = v);
+bindOpts("cfg-opts", v => { selCfg = v; syncRoleOpts(); });
 bindOpts("role-opts", v => selRole = v);
+
+function syncRoleOpts() {
+  // 猎人只存在于 8 人局：6 人局时置灰禁用并注明；已选猎人则退回随机
+  const h = document.querySelector('#role-opts .opt[data-v="hunter"]');
+  const is8 = selCfg === "8p";
+  h.classList.toggle("disabled", !is8);
+  h.title = is8 ? "扮演猎人：死亡（非被毒）时可开枪带走一人"
+                : "6 人局没有猎人，请选择 8 人局";
+  if (!is8 && selRole === "hunter") {
+    selRole = "random";
+    document.querySelectorAll("#role-opts .opt").forEach(b =>
+      b.classList.toggle("sel", b.dataset.v === "random"));
+  }
+}
+syncRoleOpts();
 
 function addMsg(text, kind) {
   const div = document.createElement("div");
