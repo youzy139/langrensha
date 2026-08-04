@@ -120,7 +120,8 @@ class PlayerAgent:
                         f"现在是第 {round_no} 轮白天，轮到你发言。"
                         f"直接用一两句话发言（不超过 {self.speech_max_chars} 字），"
                         "不要输出 JSON、不要解释、不要前缀。"),
-                    max_tokens=self.client.max_tokens * 2,
+                    max_tokens=self.client.max_tokens * 4,
+                    timeout=self.client.timeout * 2,
                 )
                 speech = raw.strip().strip('"') or None
             except Exception:

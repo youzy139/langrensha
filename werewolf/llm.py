@@ -152,9 +152,14 @@ class LLMClient:
         last_reasoning = ""
         for attempt in range(self.max_retries + 1):
             try:
-                # 空 content 多半是 reasoning 模型把预算耗在思考上：重试时加大 max_tokens
-                grow = self.max_tokens * 2 if (attempt > 0 and not last_raw) else None
-                last_raw, last_reasoning = await self.chat(model, msgs, max_tokens=grow)
+                # 空 content 是 reasoning 耗尽预算：按 2^attempt 指数加大 max_tokens
+                # （复杂局面 flash 的思考能吃掉 3000+ tokens，一次翻倍不够）
+                grow = None
+                if attempt > 0 and not last_raw:
+                    grow = min(self.max_tokens * (2 ** attempt), 12000)
+                last_raw, last_reasoning = await self.chat(
+                    model, msgs, max_tokens=grow,
+                    timeout=self.timeout * 2 if grow else None)
             except Exception as e:  # 超时 / 网络 / API 错误
                 self._log_call(player, action, model, msgs, f"ERROR: {e!r}", None,
                                False, round_no, phase, attempt)
