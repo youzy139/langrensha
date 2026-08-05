@@ -2,7 +2,7 @@
 game:
   max_rounds: 5
   speech_max_chars: 400
-  werewolf_discuss_rounds: 1
+  werewolf_discuss_rounds: 2
   allow_self_kill: true
 
 llm:

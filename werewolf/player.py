@@ -157,9 +157,14 @@ class PlayerAgent:
                              if t == self.name or t in self.mates]
         target_desc = ("存活玩家（含狼人，本局允许自刀）" if wolves_in_targets
                        else "非狼人存活玩家")
+        # 已有讨论记录时（第二轮自由麦）：回应队友、推进共识，别把自己的观点再念一遍
+        follow_up = ("前面已经讨论过了：直接回应队友的意见（同意/反对/补充），"
+                     "推动敲定最终刀口和分工，不要重复已经说过的观点。"
+                     if channel else "")
         instruction = (
             f"现在是第 {round_no} 轮夜晚，狼人频道聊天记录：\n{history}\n"
             f"可刀目标（{target_desc}）：{'、'.join(alive_targets)}。"
+            f"{follow_up}"
             "请对队友说一句简短的战术建议（不超过 50 字，此频道只有狼人可见）。"
             '只输出 JSON：{"message": "你想说的话"}'
         )

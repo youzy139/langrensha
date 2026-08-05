@@ -3,7 +3,7 @@
 game:
   max_rounds: 5
   speech_max_chars: 200
-  werewolf_discuss_rounds: 1
+  werewolf_discuss_rounds: 2
 
 llm:
   base_url_env: LLM_BASE_URL

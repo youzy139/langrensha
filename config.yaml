@@ -2,7 +2,7 @@
 game:
   max_rounds: 5              # 最大轮数，达到后按存活人数裁定
   speech_max_chars: 400      # 发言长度限制（字）；超出时在句尾智能截断
-  werewolf_discuss_rounds: 1 # 狼人夜间协商轮数
+  werewolf_discuss_rounds: 2 # 狼人夜间协商轮数
   allow_self_kill: true      # 允许狼人自刀（骗解药/做高身份）
 
 llm:
