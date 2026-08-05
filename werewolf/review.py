@@ -29,7 +29,10 @@ def build_digest(log_path: str | Path, include_reasoning: bool = True) -> str:
     include_reasoning=False 时去掉内心戏（超时重试的精简模式）。"""
     lines: list[str] = []
     for line in open(log_path, "r", encoding="utf-8"):
-        e = json.loads(line)
+        try:
+            e = json.loads(line)
+        except json.JSONDecodeError:
+            continue  # 跳过损坏行（如多进程写同一文件产生的 NUL 空洞）
         t = e.get("event")
         r = e.get("round", "")
         if t == "game_start":

@@ -15,6 +15,7 @@ import asyncio
 import json
 import os
 import random
+import re
 import sys
 import time
 from pathlib import Path
@@ -233,8 +234,13 @@ async def _send_history_game(ws: WebSocket, hist_id: str) -> None:
 # ---------- 赛后讨论 ----------
 async def _handle_discuss(ws: WebSocket, gm: GameMaster, human_name: str,
                           question: str) -> None:
-    """全场 AI 亮身份，带着各自的私密信息和推理回应人类的提问。"""
-    agents = [p for p in gm.players.values() if p.name != human_name]
+    """全场 AI 亮身份，带着各自的私密信息和推理回应人类的提问。
+    问题里点名了谁就只有谁回应（大小写不敏感）；没点名则全场回应。"""
+    all_agents = [p for p in gm.players.values() if p.name != human_name]
+    # 词边界匹配（Eve 不能被 every 误命中），中文语境下也兼容直接连写
+    agents = [a for a in all_agents
+              if re.search(rf"(?<![a-z]){re.escape(a.name.lower())}(?![a-z])",
+                           question.lower())] or all_agents
     # 串行回复而不是 gather 并发：一来避免并发请求触发限流，
     # 二来回复一个接一个出现，更像真人赛后群聊
     for a in agents:
@@ -279,12 +285,12 @@ async def _session_loop(ws: WebSocket, start_msg: dict,
                         incoming: asyncio.Queue) -> None:
     """打完一局 → 赛后模式（复盘/讨论/看历史）→ 收到 start 再开一局。"""
     while True:
-        gm, config, human_name, winner, record = await _play_one_game(
+        gm, config, human_name, winner, record, log_path = await _play_one_game(
             ws, start_msg, incoming)
         try:
             # 赛后复盘解说（日志已落盘；flash reasoning 模型可能要几十秒）
             try:
-                md = await generate_review(config, ROOT / "game_log_web.jsonl")
+                md = await generate_review(config, log_path)
             except Exception as e:  # 复盘失败不影响终局体验
                 md = f"（复盘生成失败：{e!r}）"
             record["review"] = md
@@ -309,7 +315,10 @@ async def _play_one_game(ws: WebSocket, start_msg: dict,
     inbox: asyncio.Queue = asyncio.Queue()
     record: dict = {"ts": time.strftime("%Y-%m-%d %H:%M:%S"),
                     "cfg": start_msg.get("config", "6p"), "feed": []}
-    logger = WebLogger(ROOT / "game_log_web.jsonl", feed_q)
+    # 每局独立日志文件：上一局的 logger 在赛后讨论期间仍然存活，
+    # 若共用同一文件，新局以 "w" 打开截断后旧句柄再写会造出 NUL 空洞
+    log_path = ROOT / f"game_log_web_{int(time.time() * 1000)}.jsonl"
+    logger = WebLogger(log_path, feed_q)
     gm = GameMaster(config, logger, rng=rng,
                     human_agent_cls=WebHumanAgent,
                     human_kwargs={"feed_q": feed_q, "inbox": inbox})
@@ -388,7 +397,7 @@ async def _play_one_game(ws: WebSocket, start_msg: dict,
     await ws.send_text(json.dumps(
         {"t": "game_over", "winner": winner, "reveal": reveal},
         ensure_ascii=False))
-    return gm, config, human_name, winner, record
+    return gm, config, human_name, winner, record, log_path
 
 
 async def _post_game_loop(ws: WebSocket, gm: GameMaster, human_name: str,
