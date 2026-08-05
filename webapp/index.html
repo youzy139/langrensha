@@ -118,6 +118,11 @@
   #discuss-send { background: #7aa2f7; color: #14151f; border: none;
                   padding: 0 16px; border-radius: 6px; font-weight: bold; cursor: pointer; }
   #discuss-title { font-size: 13px; color: #e0af68; margin-bottom: 6px; }
+  .micbtn { background: #364a82; color: #fff; border: none; padding: 0 12px;
+            border-radius: 6px; font-size: 15px; cursor: pointer; flex: none; }
+  .micbtn:disabled { opacity: 0.4; cursor: default; }
+  .micbtn.recording { background: #f7768e; animation: pulse 1s infinite; }
+  @keyframes pulse { 50% { opacity: 0.5; } }
 </style>
 </head>
 <body>
@@ -138,6 +143,7 @@
   <div id="ask-prompt"></div>
   <div id="choices"></div>
   <div id="textrow">
+    <button id="micbtn" class="micbtn" title="语音输入（说完自动转文字）" disabled>🎤</button>
     <input id="textin" placeholder="等待提问…" disabled>
     <button id="sendbtn" disabled>发送</button>
   </div>
@@ -152,6 +158,7 @@
       <div id="discuss-title">💬 赛后讨论 · 全员已亮身份，随便问（他们会交出自己掌握的信息和推理）</div>
       <div id="discuss-log"></div>
       <div id="discuss-row">
+        <button id="micbtn2" class="micbtn" title="语音输入（说完自动转文字）">🎤</button>
         <input id="discuss-in" placeholder="例如：Carol 你为什么第一晚验 David？">
         <button id="discuss-send">问全场</button>
       </div>
@@ -266,6 +273,7 @@ function addMsg(text, kind) {
 function setWaiting(on) {
   textin.disabled = on;
   sendbtn.disabled = on;
+  document.getElementById("micbtn").disabled = on;
   if (!on) { askPrompt.style.display = "none"; choicesEl.style.display = "none";
              textin.placeholder = "等待提问…"; }
 }
@@ -291,8 +299,9 @@ function showAsk(m) {
     choicesEl.style.display = "flex";
   } else {
     textin.disabled = false;
-    textin.placeholder = "输入你的发言…";
+    textin.placeholder = "输入你的发言…（也可以点 🎤 语音输入）";
     sendbtn.disabled = false;
+    document.getElementById("micbtn").disabled = false;
     textin.focus();
   }
 }
@@ -318,6 +327,46 @@ function showThinking(on, label) {
 
 sendbtn.onclick = () => { if (textin.value.trim()) { answer(textin.value.trim()); textin.value = ""; } };
 textin.addEventListener("keydown", e => { if (e.key === "Enter") sendbtn.onclick(); });
+
+// ---------- 语音输入（浏览器自带语音识别，文字输入保留）----------
+// Chrome/Edge 的 Web Speech API：点 🎤 开始录音，再点（或说完停顿）自动结束，
+// 识别结果实时填进输入框，确认后再手动发送——不会自动替你发出去。
+function setupMic(btn, input) {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) {  // 浏览器不支持就藏掉按钮，不影响文字输入
+    btn.style.display = "none";
+    return;
+  }
+  let rec = null, active = false;
+  btn.onclick = () => {
+    if (input.disabled) return;
+    if (active) { rec.stop(); return; }
+    rec = new SR();
+    rec.lang = "zh-CN";
+    rec.interimResults = true;   // 边说边出字
+    rec.continuous = false;
+    const base = input.value.trim() ? input.value.trim() + " " : "";
+    rec.onresult = e => {
+      let txt = "";
+      for (const r of e.results) txt += r[0].transcript;
+      input.value = base + txt;
+    };
+    rec.onend = () => { active = false; btn.classList.remove("recording"); };
+    rec.onerror = e => {
+      active = false;
+      btn.classList.remove("recording");
+      if (e.error === "not-allowed")
+        addMsg("🎤 麦克风权限被拒绝了，请在浏览器地址栏允许麦克风后重试", "system");
+      else if (e.error === "network")
+        addMsg("🎤 语音识别服务连不上（浏览器在线识别需要联网），这次先用键盘吧", "system");
+    };
+    active = true;
+    btn.classList.add("recording");
+    try { rec.start(); } catch { active = false; btn.classList.remove("recording"); }
+  };
+}
+setupMic(document.getElementById("micbtn"), textin);
+setupMic(document.getElementById("micbtn2"), document.getElementById("discuss-in"));
 
 function connect() {  // 页面加载即建立连接，历史对局不依赖开局
   const proto = location.protocol === "https:" ? "wss" : "ws";

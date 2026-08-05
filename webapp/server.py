@@ -235,15 +235,13 @@ async def _handle_discuss(ws: WebSocket, gm: GameMaster, human_name: str,
                           question: str) -> None:
     """全场 AI 亮身份，带着各自的私密信息和推理回应人类的提问。"""
     agents = [p for p in gm.players.values() if p.name != human_name]
-
-    async def one(agent: PlayerAgent) -> str:
+    # 串行回复而不是 gather 并发：一来避免并发请求触发限流，
+    # 二来回复一个接一个出现，更像真人赛后群聊
+    for a in agents:
         try:
-            return await agent.post_game_chat(question, human_name)
+            r = await a.post_game_chat(question, human_name)
         except Exception as e:
-            return f"（回应失败：{e!r}）"
-
-    replies = await asyncio.gather(*(one(a) for a in agents))
-    for a, r in zip(agents, replies):
+            r = f"（回应失败：{e!r}）"
         await ws.send_text(json.dumps(
             {"t": "discuss_msg", "player": a.name,
              "role_name": ROLE_NAMES[a.role], "text": r},
@@ -296,6 +294,7 @@ async def _session_loop(ws: WebSocket, start_msg: dict,
             start_msg = await _post_game_loop(ws, gm, human_name, incoming)
         finally:
             await gm.client.aclose()
+            gm.logger.close()  # 日志留到赛后讨论之后才关（讨论仍会写 llm_call 事件）
 
 
 async def _play_one_game(ws: WebSocket, start_msg: dict,
@@ -380,7 +379,9 @@ async def _play_one_game(ws: WebSocket, start_msg: dict,
     finally:
         out_task.cancel()
         in_task.cancel()
-        logger.close()
+        # 注意：这里不关 logger——赛后讨论还要往日志写 llm_call 事件，
+        # 提前关闭会让所有赛后发言报 "I/O operation on closed file"
+        # （logger 由 _session_loop 在赛后模式结束后统一关闭）
     reveal = "；".join(f"{p.name}={ROLE_NAMES[p.role]}" for p in gm.players.values())
     record["winner"] = winner
     record["reveal"] = reveal

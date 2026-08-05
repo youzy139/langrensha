@@ -25,6 +25,10 @@ class GameLogger:
             "event": event_type,
             **payload,
         }
+        if self._fp.closed:
+            # 对局结束后日志已被 close()，但赛后讨论仍会触发 llm_call 日志。
+            # 重新以追加模式打开，避免 "I/O operation on closed file" 干掉赛后发言。
+            self._fp = open(self.log_path, "a", encoding="utf-8")
         self._fp.write(json.dumps(record, ensure_ascii=False) + "\n")
         self._fp.flush()
 
