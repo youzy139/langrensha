@@ -105,6 +105,40 @@
                border-radius: 6px; padding: 6px 10px; margin: 4px 0;
                font-size: 12px; cursor: pointer; text-align: left; width: 100%; }
   .hist-item:hover { border-color: #7aa2f7; color: #fff; }
+  .modetabs { display: flex; gap: 8px; margin-bottom: 16px; }
+  .modetab { flex: 1; background: #24283b; border: 1px solid #444; color: #aaa;
+             padding: 8px; border-radius: 8px; cursor: pointer; font-size: 14px; }
+  .modetab.sel { background: #364a82; border-color: #7aa2f7; color: #fff; }
+  .roombtn { background: #9ece6a; color: #14151f; border: none; padding: 10px;
+             border-radius: 8px; font-size: 15px; font-weight: bold;
+             cursor: pointer; width: 100%; }
+  #multi-pane input, #roomlobby input { background: #24283b; border: 1px solid #444;
+             color: #eee; padding: 9px 12px; border-radius: 6px; font-size: 14px;
+             outline: none; width: 100%; }
+  #roomlobby { position: fixed; inset: 0; background: rgba(10,10,18,0.92);
+               display: flex; align-items: center; justify-content: center; z-index: 10; }
+  #roomlobby .panel { background: #1d1f2e; border: 1px solid #444;
+                      border-radius: 12px; padding: 32px 40px; width: 380px; }
+  #roomlobby h2 { color: #bb9af7; margin-bottom: 18px; text-align: center; }
+  #roomplayers { font-size: 14px; }
+  #roomplayers .rp { padding: 6px 10px; background: #24283b; border-radius: 6px;
+                     margin: 4px 0; display: flex; justify-content: space-between; }
+  #roomplayers .rp .hostbadge { color: #e0af68; font-size: 12px; }
+  #roomlobby .group { margin-bottom: 16px; }
+  #roomlobby .label { font-size: 13px; color: #999; margin-bottom: 6px; }
+  #roomlobby .opts { display: flex; flex-wrap: wrap; gap: 8px; }
+  #roomlobby .opt { background: #24283b; border: 1px solid #444; color: #ddd;
+                    padding: 7px 14px; border-radius: 6px; cursor: pointer; font-size: 14px; }
+  #roomlobby .opt.sel { background: #364a82; border-color: #7aa2f7; color: #fff; }
+  #roomlobby .opt.locked { opacity: 0.5; cursor: not-allowed; }
+  #roomstartbtn { width: 100%; background: #9ece6a; color: #14151f; border: none;
+                  padding: 11px; border-radius: 8px; font-size: 16px;
+                  font-weight: bold; cursor: pointer; margin-top: 6px; }
+  #roomstartbtn:disabled { opacity: 0.4; cursor: default; }
+  #leaveroombtn { width: 100%; margin-top: 8px; background: none;
+                  border: 1px solid #666; color: #999; padding: 8px;
+                  border-radius: 8px; cursor: pointer; }
+  #roster div.afk::after { content: "（托管中）"; color: #e0af68; font-size: 11px; }
   #discuss-box { border-top: 1px solid #444; padding-top: 10px; margin-bottom: 12px; }
   #discuss-log { max-height: 30vh; overflow-y: auto; margin-bottom: 8px; }
   .dmsg { background: #24283b; border-radius: 6px; padding: 6px 10px;
@@ -173,29 +207,75 @@
 <div id="lobby">
   <div class="panel">
     <h2>🐺 狼人杀 · 开局</h2>
-    <div class="group">
-      <div class="label">局型</div>
-      <div class="opts" id="cfg-opts">
-        <button class="opt sel" data-v="6p">6 人局</button>
-        <button class="opt" data-v="8p">8 人局（含猎人）</button>
+    <div class="modetabs">
+      <button class="modetab sel" id="tab-single">👤 单人 + AI</button>
+      <button class="modetab" id="tab-multi">👥 多人房间</button>
+    </div>
+    <div id="single-pane">
+      <div class="group">
+        <div class="label">局型</div>
+        <div class="opts" id="cfg-opts">
+          <button class="opt sel" data-v="6p">6 人局</button>
+          <button class="opt" data-v="8p">8 人局（含猎人）</button>
+        </div>
+      </div>
+      <div class="group">
+        <div class="label">你想扮演</div>
+        <div class="opts" id="role-opts">
+          <button class="opt sel" data-v="random">🎲 随机</button>
+          <button class="opt" data-v="werewolf">🐺 狼人</button>
+          <button class="opt" data-v="seer">🔮 预言家</button>
+          <button class="opt" data-v="witch">🧪 女巫</button>
+          <button class="opt" data-v="villager">👨‍🌾 平民</button>
+          <button class="opt" data-v="hunter" title="6 人局没有猎人，请选 8 人局">🔫 猎人（8人局）</button>
+        </div>
+      </div>
+      <button id="startbtn">开始对局</button>
+    </div>
+    <div id="multi-pane" style="display:none">
+      <div class="group">
+        <div class="label">你的昵称</div>
+        <input id="nickin" placeholder="例如：阿泽" maxlength="12">
+      </div>
+      <div class="group">
+        <button id="createroombtn" class="roombtn">🏠 创建房间</button>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <input id="roomcodein" placeholder="房间码" maxlength="4"
+                 style="flex:1;text-transform:uppercase">
+          <button id="joinroombtn" class="roombtn" style="flex:1">🚪 加入房间</button>
+        </div>
+      </div>
+      <div style="font-size:12px;color:#888;line-height:1.6">
+        局域网玩法：房主启动服务器后，朋友浏览器打开
+        <code>http://房主IP:7100</code> 输入房间码即可加入；
+        人数不足由 AI 自动补位。人挂机 75 秒不操作会由 AI 托管代打。
       </div>
     </div>
-    <div class="group">
-      <div class="label">你想扮演</div>
-      <div class="opts" id="role-opts">
-        <button class="opt sel" data-v="random">🎲 随机</button>
-        <button class="opt" data-v="werewolf">🐺 狼人</button>
-        <button class="opt" data-v="seer">🔮 预言家</button>
-        <button class="opt" data-v="witch">🧪 女巫</button>
-        <button class="opt" data-v="villager">👨‍🌾 平民</button>
-        <button class="opt" data-v="hunter" title="6 人局没有猎人，请选 8 人局">🔫 猎人（8人局）</button>
-      </div>
-    </div>
-    <button id="startbtn">开始对局</button>
     <div class="group" style="margin-top:16px">
       <div class="label">📜 历史对局（点击回看完整对话与复盘）</div>
       <div id="hist-list"><div style="font-size:12px;color:#666">加载中…</div></div>
     </div>
+  </div>
+</div>
+
+<div id="roomlobby" style="display:none">
+  <div class="panel">
+    <h2>🏠 房间 <span id="roomcode" style="letter-spacing:4px"></span></h2>
+    <div style="font-size:12px;color:#888;text-align:center;margin:-10px 0 14px">
+      朋友打开本页面 → 多人房间 → 输入房间码加入</div>
+    <div class="group">
+      <div class="label">玩家（<span id="roomcount"></span>）</div>
+      <div id="roomplayers"></div>
+    </div>
+    <div class="group">
+      <div class="label">局型（房主设置）</div>
+      <div class="opts" id="room-cfg-opts">
+        <button class="opt sel" data-v="6p">6 人局</button>
+        <button class="opt" data-v="8p">8 人局（含猎人）</button>
+      </div>
+    </div>
+    <button id="roomstartbtn">开始对局</button>
+    <button id="leaveroombtn">离开房间</button>
   </div>
 </div>
 
@@ -212,12 +292,17 @@ const lobby = document.getElementById("lobby");
 
 let ws, selCfg = "6p", selRole = "random", gameEnded = false, liveDiscuss = false;
 let rosterPlayers = [], myName = "";
+// 多人房间模式状态
+let roomMode = false, isHost = false, myToken = "", myNick = "", nicknames = {};
 
 function renderRoster(me) {
   if (me) myName = me;
-  roster.innerHTML = "<b style='font-size:13px'>玩家</b>" + rosterPlayers.map(p =>
-    `<div class="${p.alive ? "" : "dead"}">${p.name === myName ? "🧑 " + escHtml(p.name) + "（你）" : "🤖 " + escHtml(p.name)}</div>`
-  ).join("");
+  roster.innerHTML = "<b style='font-size:13px'>玩家</b>" + rosterPlayers.map(p => {
+    const nick = nicknames[p.name] ? `（${escHtml(nicknames[p.name])}）` : "";
+    const cls = (p.alive ? "" : "dead") + (p.afk && p.alive ? " afk" : "");
+    const icon = nicknames[p.name] ? "🧑" : "🤖";
+    return `<div class="${cls}">${icon} ${escHtml(p.name)}${p.name === myName ? "（你）" : nick}</div>`;
+  }).join("");
 }
 
 function mdToHtml(md) {
@@ -407,8 +492,22 @@ function handle(m) {
   }
   else if (m.t === "started") {
     statusEl.textContent = `对局进行中 · 你是 ${m.name}`;
-    rosterPlayers = m.players.map(name => ({name, alive: true}));
+    if (m.nicknames) nicknames = m.nicknames;
+    if (roomMode) {  // 房间开局：收起房间大厅，清屏进对局
+      document.getElementById("roomlobby").style.display = "none";
+      lobby.style.display = "none";
+      document.getElementById("endpanel").style.display = "none";
+      document.getElementById("btn-end").style.display = "none";
+      gameEnded = false;
+      feed.innerHTML = "";
+      roleCard.style.display = "none";
+    }
+    rosterPlayers = m.players.map(name => ({name, alive: true, afk: false}));
     renderRoster(m.name);
+  }
+  else if (m.t === "player_afk") {
+    const p = rosterPlayers.find(p => p.name === m.name);
+    if (p) { p.afk = m.afk; renderRoster(myName); }
   }
   else if (m.t === "dead") {
     const p = rosterPlayers.find(p => p.name === m.name);
@@ -494,7 +593,7 @@ function sendDiscuss() {
   const inp = document.getElementById("discuss-in");
   const q = inp.value.trim();
   if (!q || !liveDiscuss) return;
-  addDiscuss("你", q, true);
+  if (!roomMode) addDiscuss("你", q, true);  // 房间模式服务端会广播回来，不本地回显
   ws.send(JSON.stringify({t: "discuss", text: q}));
   inp.value = "";
 }
@@ -513,8 +612,109 @@ document.getElementById("btn-end").onclick = () => {
 };
 document.getElementById("btn-again").onclick = () => {
   document.getElementById("endpanel").style.display = "none";
-  lobby.style.display = "flex";
-  refreshHistory();  // 回大厅时刷新历史列表
+  if (roomMode) {
+    showRoomLobby();  // 回房间大厅，房主可再开一局
+  } else {
+    lobby.style.display = "flex";
+    refreshHistory();  // 回大厅时刷新历史列表
+  }
+};
+
+// ==================== 多人房间模式 ====================
+const roomlobbyEl = document.getElementById("roomlobby");
+
+function enterRoom(firstMsg) {
+  // 房间模式需要一条全新的连接：服务端按首条消息路由单人/房间模式
+  if (ws && ws.readyState === WebSocket.OPEN) ws.close();
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  ws = new WebSocket(`${proto}://${location.host}/ws`);
+  ws.onmessage = ev => handle(JSON.parse(ev.data));
+  ws.onopen = () => ws.send(JSON.stringify(firstMsg));
+  ws.onclose = () => {
+    statusEl.textContent = "连接已断开（刷新页面重开）";
+    if (roomMode) { roomMode = false; lobby.style.display = "flex";
+                    roomlobbyEl.style.display = "none"; connect(); }
+  };
+}
+
+function showRoomLobby() {
+  lobby.style.display = "none";
+  roomlobbyEl.style.display = "flex";
+}
+
+document.getElementById("tab-single").onclick = () => {
+  document.getElementById("tab-single").classList.add("sel");
+  document.getElementById("tab-multi").classList.remove("sel");
+  document.getElementById("single-pane").style.display = "block";
+  document.getElementById("multi-pane").style.display = "none";
+};
+document.getElementById("tab-multi").onclick = () => {
+  document.getElementById("tab-multi").classList.add("sel");
+  document.getElementById("tab-single").classList.remove("sel");
+  document.getElementById("single-pane").style.display = "none";
+  document.getElementById("multi-pane").style.display = "block";
+  document.getElementById("nickin").focus();
+};
+
+function getNick() {
+  const n = document.getElementById("nickin").value.trim();
+  return n || "玩家" + Math.floor(Math.random() * 90 + 10);
+}
+document.getElementById("createroombtn").onclick = () => {
+  myNick = getNick();
+  localStorage.setItem("ww_nick", myNick);
+  enterRoom({t: "create_room", nickname: myNick});
+};
+document.getElementById("joinroombtn").onclick = () => {
+  const code = document.getElementById("roomcodein").value.trim().toUpperCase();
+  if (!code) { alert("输入 4 位房间码"); return; }
+  myNick = getNick();
+  localStorage.setItem("ww_nick", myNick);
+  enterRoom({t: "join_room", room: code, nickname: myNick});
+};
+document.getElementById("nickin").value = localStorage.getItem("ww_nick") || "";
+
+function renderRoomState(m) {
+  document.getElementById("roomcode").textContent = m.room;
+  document.getElementById("roomcount").textContent =
+    `${m.players.length} 人${m.ai_fill ? ` · AI 补位 ${m.ai_fill}` : ""}`;
+  document.getElementById("roomplayers").innerHTML = m.players.map(p =>
+    `<div class="rp"><span>🧑 ${escHtml(p.nick)}${p.nick === myNick ? "（你）" : ""}</span>` +
+    `${p.host ? '<span class="hostbadge">👑 房主</span>' : ""}</div>`).join("");
+  isHost = m.players.find(p => p.nick === myNick)?.host ?? isHost;
+  document.querySelectorAll("#room-cfg-opts .opt").forEach(b => {
+    b.classList.toggle("sel", b.dataset.v === m.config);
+    b.classList.toggle("locked", !isHost);
+  });
+  const sb = document.getElementById("roomstartbtn");
+  sb.style.display = isHost ? "block" : "none";
+  sb.textContent = m.state === "ENDED" ? "🔄 再来一局" : "开始对局";
+}
+
+document.getElementById("room-cfg-opts").addEventListener("click", e => {
+  if (!e.target.classList.contains("opt") || !isHost) return;
+  ws.send(JSON.stringify({t: "set_config", config: e.target.dataset.v}));
+});
+document.getElementById("roomstartbtn").onclick = () => {
+  if (isHost) ws.send(JSON.stringify({t: "room_start"}));
+};
+document.getElementById("leaveroombtn").onclick = () => location.reload();
+
+// 房间相关消息并入主分发
+const _handleBase = handle;
+handle = function(m) {
+  if (m.t === "joined") {
+    roomMode = true;
+    myToken = m.token;
+    isHost = m.host;
+    showRoomLobby();
+  } else if (m.t === "room_state") {
+    renderRoomState(m);
+  } else if (m.t === "room_error") {
+    alert(m.text);
+  } else {
+    _handleBase(m);
+  }
 };
 </script>
 </body>

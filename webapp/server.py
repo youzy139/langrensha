@@ -34,6 +34,9 @@ from werewolf.player import PlayerAgent
 from werewolf.review import generate_review
 from werewolf.roles import ROLE_NAMES
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from rooms import RoomManager  # noqa: E402  多人房间模式（单人流程不受影响）
+
 CONFIGS = {
     "6p": ROOT / "config.yaml",
     "8p": ROOT / "config_8p_allflash.yaml",
@@ -255,10 +258,23 @@ async def _handle_discuss(ws: WebSocket, gm: GameMaster, human_name: str,
 
 
 # ---------- 对局会话 ----------
+ROOMS = RoomManager(CONFIGS, HISTORY_DIR)
+ROOM_MSGS = {"create_room", "join_room", "rejoin"}
+
+
 @app.websocket("/ws")
 async def game_ws(ws: WebSocket):
     await ws.accept()
+    try:
+        first = json.loads(await ws.receive_text())
+    except WebSocketDisconnect:
+        return
+    if first.get("t") in ROOM_MSGS:
+        await ROOMS.handle_entry(ws, first)  # 房间模式：由 RoomManager 全程接管
+        return
+
     incoming: asyncio.Queue = asyncio.Queue()
+    incoming.put_nowait(first)
 
     async def recv_loop():  # 统一接收，分发给大厅/对局/赛后各阶段
         while True:
@@ -452,7 +468,9 @@ def _ensure_port_free(port: int) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--host", default="127.0.0.1")
+    # 默认监听所有网卡：多人房间需要局域网内朋友的浏览器能连进来
+    # （Windows 首次会弹防火墙提示，允许即可；纯单人玩也不受影响）
+    ap.add_argument("--host", default="0.0.0.0")
     ap.add_argument("--port", type=int, default=7100)
     args = ap.parse_args()
     _ensure_port_free(args.port)
