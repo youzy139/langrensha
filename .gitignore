@@ -3,19 +3,21 @@ __pycache__/
 *.pyc
 .venv/
 
-# 对局原始日志（体积大，可从 stats.json 复现统计；如需分享可单独打包）
-*.jsonl
-*.checkpoint.json
+# 运行产物统一在 data/ 下（结构见 werewolf/paths.py）：
+# 对局原始日志体积大、可从 stats.json 复现统计，默认不入库；
+# 只保留实验组的统计和精选复盘
+data/**
+!data/experiments/
+!data/experiments/*/
+!data/experiments/*/stats.json
+!data/experiments/*/*.review.md
 
 # 运行输出
 *.log
-game_log*.html
-game_log*.review.md
-logs_mock_test/
-webapp/*.log
-
-# Web 端历史对局存档
-webapp/history/
+*.checkpoint.json
 
 # LLM 密钥（本地）
 .env
+
+# IDE
+.idea/

@@ -13,8 +13,8 @@ import seaborn as sns
 
 setup_plot()
 
-base = json.loads(Path("logs/stats.json").read_text(encoding="utf-8"))
-pro = json.loads(Path("logs_pro_wolves/stats.json").read_text(encoding="utf-8"))
+base = json.loads(Path("data/experiments/6p_flash/stats.json").read_text(encoding="utf-8"))
+pro = json.loads(Path("data/experiments/6p_pro_wolves/stats.json").read_text(encoding="utf-8"))
 
 groups = ["全 flash（基准）", "pro 狼 vs flash 好人"]
 wolf_wins = [base["camp_wins"].get("werewolf", 0), pro["camp_wins"].get("werewolf", 0)]

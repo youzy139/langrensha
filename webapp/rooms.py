@@ -31,6 +31,9 @@ from werewolf.player import PlayerAgent
 from werewolf.review import generate_review
 from werewolf.roles import ROLE_NAMES
 
+import archive
+from feedfmt import RECORDED, game_over_msg, public_events, public_msg, wolf_msg
+
 ROOT = Path(__file__).resolve().parent.parent
 
 import os
@@ -67,20 +70,12 @@ class RoomLogger(GameLogger):
 
     def print(self, text: str = "") -> None:
         if text:
-            self.room.broadcast({"t": "feed", "kind": "public", "text": text},
-                                record=True)
+            self.room.broadcast(public_msg(text), record=True)
 
     def event(self, event_type, **payload):
         super().event(event_type, **payload)
-        dead: list[str] = []
-        if event_type == "day_announce":
-            dead = payload.get("deaths") or []
-        elif event_type == "day_vote" and payload.get("exiled"):
-            dead = [payload["exiled"]]
-        elif event_type == "hunter_shot" and payload.get("shot"):
-            dead = [payload["shot"]]
-        for name in dead:
-            self.room.broadcast({"t": "dead", "name": name})
+        for m in public_events(event_type, payload):
+            self.room.broadcast(m, record=True)
 
 
 class RoomHumanAgent(PlayerAgent):
@@ -103,17 +98,19 @@ class RoomHumanAgent(PlayerAgent):
             self._conn.feed({"t": "feed", "kind": "private", "text": line})
 
     def wolf_hear(self, line: str) -> None:
-        self._conn.feed({"t": "feed", "kind": "wolf",
-                         "text": "🐺 狼人频道 · " + line})
+        speaker, _, msg = line.partition(": ")
+        self._conn.feed(wolf_msg(speaker, msg))
 
     async def _ask(self, prompt: str, candidates: list[str] | None = None,
-                   allow_abstain: bool = True) -> str:
+                   allow_abstain: bool = True, action: str = "") -> str:
         if self._conn.afk:
             raise AFK()
         self._drain_inbox()  # 丢弃迟到的陈旧回答，防止串到下一个问题
         self._conn.feed({
             "t": "ask",
             "kind": "choice" if candidates else "text",
+            "action": action,
+            "timeout": ASK_TIMEOUT,
             "prompt": prompt,
             "candidates": candidates or [],
             "allow_abstain": allow_abstain,
@@ -125,7 +122,7 @@ class RoomHumanAgent(PlayerAgent):
             self._room.broadcast({"t": "player_afk", "name": self.name,
                                   "afk": True})
             self._room.broadcast(
-                {"t": "feed", "kind": "public",
+                {"t": "feed", "kind": "system",
                  "text": f"⏳ {self.name} 超时未响应，接下来由 AI 托管"},
                 record=True)
             raise AFK()
@@ -139,10 +136,10 @@ class RoomHumanAgent(PlayerAgent):
                 break
 
     async def _ask_choice(self, prompt, candidates, allow_abstain=True,
-                          exclude_self=True):
+                          exclude_self=True, action=""):
         pool = [c for c in candidates if not (exclude_self and c == self.name)]
         while True:
-            raw = await self._ask(prompt, pool, allow_abstain)
+            raw = await self._ask(prompt, pool, allow_abstain, action)
             if allow_abstain and raw in ("", "弃权"):
                 return None
             choice = self._resolve_choice(raw, pool)
@@ -155,23 +152,24 @@ class RoomHumanAgent(PlayerAgent):
     async def speak(self, round_no: int) -> str:
         try:
             text = await self._ask(
-                f"轮到你发言（第 {round_no} 轮，≤{self.speech_max_chars} 字）")
+                f"轮到你发言（第 {round_no} 轮，≤{self.speech_max_chars} 字）",
+                action="speak")
             return (text or "（我选择沉默）")[: self.speech_max_chars]
         except AFK:
             return await super().speak(round_no)
 
     async def vote(self, candidates, round_no):
         try:
-            return await self._ask_choice(f"投票放逐（第 {round_no} 轮）", candidates)
+            return await self._ask_choice(f"投票放逐（第 {round_no} 轮）", candidates,
+                                          action="vote")
         except AFK:
             return await super().vote(candidates, round_no)
 
     async def werewolf_discuss(self, channel, alive_targets, round_no):
         try:
-            msg = (await self._ask(f"狼人频道发言（第 {round_no} 夜，≤50 字）")
-                   or "……")[:50]
-            self._conn.feed({"t": "feed", "kind": "wolf",
-                             "text": f"🐺 狼人频道 · {self.name}（你）: {msg}"})
+            msg = (await self._ask(f"狼人频道发言（第 {round_no} 夜，≤50 字）",
+                                   action="wolf_chat") or "……")[:50]
+            self._conn.feed(wolf_msg(self.name, msg))
             return msg
         except AFK:
             return await super().werewolf_discuss(channel, alive_targets, round_no)
@@ -180,7 +178,8 @@ class RoomHumanAgent(PlayerAgent):
         try:
             c = await self._ask_choice(
                 "今晚刀谁？（候选里有狼人 = 本局允许自刀，可骗解药/做高身份）",
-                alive_targets, allow_abstain=False, exclude_self=False)
+                alive_targets, allow_abstain=False, exclude_self=False,
+                action="kill")
             return c or self.rng.choice(alive_targets)
         except AFK:
             return await super().werewolf_kill_vote(channel, alive_targets, round_no)
@@ -188,7 +187,8 @@ class RoomHumanAgent(PlayerAgent):
     async def seer_check(self, candidates, round_no):
         try:
             c = await self._ask_choice(f"预言家验人（第 {round_no} 夜）",
-                                       candidates, allow_abstain=False)
+                                       candidates, allow_abstain=False,
+                                       action="check")
             return c or self.rng.choice(candidates)
         except AFK:
             return await super().seer_check(candidates, round_no)
@@ -205,12 +205,13 @@ class RoomHumanAgent(PlayerAgent):
                                      "text": "今晚被刀的是你，但首夜之后不能自救"})
                 else:
                     raw = await self._ask(f"今晚被刀的是 {killed}，用解药救吗？",
-                                          ["救", "不救"], allow_abstain=False)
+                                          ["救", "不救"], allow_abstain=False,
+                                          action="save")
                     save = raw == "救"
             poison = None
             if has_poison and not save:
-                poison = await self._ask_choice("用毒药毒谁？（回车/弃权 = 不用）",
-                                                alive_others)
+                poison = await self._ask_choice("用毒药毒谁？（弃权 = 不用）",
+                                                alive_others, action="poison")
             return {"save": save, "poison": poison}
         except AFK:
             return await super().witch_action(killed, has_antidote, has_poison,
@@ -219,7 +220,8 @@ class RoomHumanAgent(PlayerAgent):
     async def hunter_shot(self, candidates, round_no, cause):
         try:
             return await self._ask_choice(
-                f"你{cause}，可以开枪带走一人（也可不开枪）", candidates)
+                f"你{cause}，可以开枪带走一人（也可不开枪）", candidates,
+                action="shoot")
         except AFK:
             return await super().hunter_shot(candidates, round_no, cause)
 
@@ -277,7 +279,7 @@ class Room:
             # Phase 1：断线 = AFK 到底，AI 托管打完本局
             conn.afk = True
             self.broadcast({"t": "player_afk", "name": conn.seat, "afk": True})
-            self.broadcast({"t": "feed", "kind": "public",
+            self.broadcast({"t": "feed", "kind": "system",
                             "text": f"🔌 {conn.nickname}（{conn.seat}）掉线，AI 托管中"},
                            record=True)
         else:
@@ -290,7 +292,7 @@ class Room:
         for c in self.conns:
             if c is not exclude and c.connected:
                 c.feed(m)
-        if record and self.record is not None and m.get("t") in ("feed", "role"):
+        if record and self.record is not None and m.get("t") in RECORDED:
             self.record["feed"].append(m)
 
     def broadcast_state(self) -> None:
@@ -355,7 +357,7 @@ class Room:
         self.record = {"ts": time.strftime("%Y-%m-%d %H:%M:%S"),
                        "cfg": self.config_key, "feed": [],
                        "room": self.code}
-        log_path = ROOT / f"game_log_web_{int(time.time() * 1000)}.jsonl"
+        self.game_id, log_path = archive.new_game()
         logger = RoomLogger(log_path, self)
         self.gm = GameMaster(config, logger, rng=rng,
                              human_agent_cls=RoomHumanAgent,
@@ -381,7 +383,8 @@ class Room:
             }.get(phase)
             if label is not None:
                 self.broadcast({"t": "thinking", "on": on,
-                                "label": label if on else ""})
+                                "label": label if on else "",
+                                "player": player if on else "", "phase": phase})
 
         self.gm.client.on_status = on_llm_status
         all_names = [p["name"] for p in config["players"]]
@@ -396,11 +399,10 @@ class Room:
 
         winner = await self.gm.run()
 
-        reveal = "；".join(f"{p.name}={ROLE_NAMES[p.role]}"
-                           for p in self.gm.players.values())
-        self.record["winner"] = winner
-        self.record["reveal"] = reveal
-        self.broadcast({"t": "game_over", "winner": winner, "reveal": reveal})
+        over = game_over_msg(self.gm, winner)
+        self.record.update(winner=winner, reveal=over["reveal"],
+                           rounds=self.gm.round_no, final=over["players"])
+        self.broadcast(over)
 
         # 赛后复盘（一份生成，全场共享）
         try:
@@ -408,7 +410,7 @@ class Room:
         except Exception as e:
             md = f"（复盘生成失败：{e!r}）"
         self.record["review"] = md
-        self.record["id"] = self.manager.save_history(self.record)
+        archive.save_record(self.game_id, self.record)
         self.broadcast({"t": "review", "md": md})
         self.state = "ENDED"
         await self.gm.client.aclose()
@@ -448,10 +450,9 @@ class Room:
 class RoomManager:
     """全局房间注册表 + WS 连接入口。"""
 
-    def __init__(self, configs: dict, history_dir: Path):
+    def __init__(self, configs: dict):
         self.rooms: dict[str, Room] = {}
         self.configs = configs
-        self.history_dir = history_dir
 
     # ---------- 房间码 ----------
     def _new_code(self) -> str:
@@ -527,33 +528,13 @@ class RoomManager:
             out_task.cancel()
             room.on_disconnect(conn)
 
-    # ---------- 历史存档（与单人模式共用目录与格式） ----------
-    def save_history(self, record: dict) -> str:
-        self.history_dir.mkdir(exist_ok=True)
-        hist_id = time.strftime("%Y%m%d_%H%M%S")
-        (self.history_dir / f"{hist_id}.json").write_text(
-            json.dumps(record, ensure_ascii=False, indent=1), encoding="utf-8")
-        return hist_id
-
+    # ---------- 历史存档（与单人模式共用 archive.py） ----------
     async def send_history_list(self, conn: HumanConnection) -> None:
-        games = []
-        if self.history_dir.exists():
-            for f in sorted(self.history_dir.glob("*.json"), reverse=True):
-                try:
-                    g = json.loads(f.read_text(encoding="utf-8"))
-                    games.append({"id": f.stem, "ts": g.get("ts", f.stem),
-                                  "cfg": g.get("cfg", ""),
-                                  "winner": g.get("winner", ""),
-                                  "players": g.get("players", [])})
-                except Exception:
-                    continue
-        conn.feed({"t": "history_list", "games": games[:20]})
+        conn.feed({"t": "history_list", "games": archive.list_games()})
 
     async def send_history_game(self, conn: HumanConnection, hist_id: str) -> None:
-        f = self.history_dir / f"{hist_id}.json"
-        if not f.exists():
-            conn.feed({"t": "feed", "kind": "private",
-                       "text": "⚠️ 找不到该历史对局"})
+        g = archive.load_game(hist_id)
+        if g is None:
+            conn.feed({"t": "toast", "text": "找不到该历史对局"})
             return
-        conn.feed({"t": "history_game",
-                   "game": json.loads(f.read_text(encoding="utf-8"))})
+        conn.feed({"t": "history_game", "game": g})

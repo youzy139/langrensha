@@ -13,12 +13,14 @@ import argparse
 import asyncio
 import random
 import sys
+import time
 from pathlib import Path
 
 import yaml
 
 from werewolf.gamemaster import GameMaster
 from werewolf.logger import GameLogger
+from werewolf.paths import data_dir
 from werewolf.replay import generate_replay
 from werewolf.review import generate_review
 
@@ -74,9 +76,12 @@ def main() -> int:
             print("（人类模式只跑一局，已忽略 --games）")
             args.games = 1
 
+    # 每次运行一个目录：data/cli/<时间戳>/（Mock 模式落到 data/mock/cli/）
+    run_dir = data_dir("cli") / time.strftime("%Y%m%d_%H%M%S")
+    run_dir.mkdir(parents=True, exist_ok=True)
     results = []
     for i in range(1, args.games + 1):
-        log_path = Path(f"game_log_{i}.jsonl") if args.games > 1 else Path("game_log.jsonl")
+        log_path = run_dir / (f"game_{i}.jsonl" if args.games > 1 else "game.jsonl")
         print(f"\n########## 第 {i}/{args.games} 局 ##########")
         seed = (args.seed + i - 1) if args.seed is not None else None
         winner = asyncio.run(run_game(config, i, log_path, seed))

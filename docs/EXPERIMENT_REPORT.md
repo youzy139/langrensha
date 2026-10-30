@@ -97,13 +97,13 @@ D 组（pro 好人）狼胜率 70%，不低于 E 组（全 flash）的 60%，甚
 ```bash
 # 任一组实验（以 C 组为例）
 python run_experiment.py --config config_pro_wolves_8p.yaml \
-    --logdir logs_8p --total 10 --budget 240 --seed-base 3000
+    --logdir 8p_pro_wolves --total 10 --budget 240 --seed-base 3000
 
 # 单局回放 + AI 解说复盘
 python main.py --config config_pro_wolves_8p.yaml --replay --review
 ```
 
-各组原始对局日志（含完整 prompt/回复/reasoning）见 `logs*/game_*.jsonl`，统计见 `logs*/stats.json`。
+各组原始对局日志（含完整 prompt/回复/reasoning）见 `data/experiments/<组>/game_*.jsonl`（本地生成，不入库），统计见 `data/experiments/<组>/stats.json`。
 
 ## 7. 附：技术路线
 

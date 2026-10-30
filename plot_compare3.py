@@ -14,9 +14,9 @@ import seaborn as sns
 setup_plot()
 
 GROUPS = [
-    ("6人局\n全 flash", json.loads(Path("logs/stats.json").read_text(encoding="utf-8"))),
-    ("6人局\npro 狼", json.loads(Path("logs_pro_wolves/stats.json").read_text(encoding="utf-8"))),
-    ("8人平衡局\npro 狼", json.loads(Path("logs_8p/stats.json").read_text(encoding="utf-8"))),
+    ("6人局\n全 flash", json.loads(Path("data/experiments/6p_flash/stats.json").read_text(encoding="utf-8"))),
+    ("6人局\npro 狼", json.loads(Path("data/experiments/6p_pro_wolves/stats.json").read_text(encoding="utf-8"))),
+    ("8人平衡局\npro 狼", json.loads(Path("data/experiments/8p_pro_wolves/stats.json").read_text(encoding="utf-8"))),
 ]
 names = [g[0] for g in GROUPS]
 wolf = [g[1]["camp_wins"].get("werewolf", 0) for g in GROUPS]

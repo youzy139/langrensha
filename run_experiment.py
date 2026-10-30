@@ -20,13 +20,16 @@ import yaml
 
 from werewolf.gamemaster import GameMaster
 from werewolf.logger import GameLogger
+from werewolf.paths import data_dir
 
-LOG_DIR = Path("logs")  # 可通过 --logdir 覆盖
+LOG_DIR = Path("data/experiments/6p_flash")  # 可通过 --logdir 覆盖
 
 
 def set_log_dir(p: str) -> None:
+    """--logdir 可以给完整路径，也可以只给组名（自动放进 data/experiments/）。"""
     global LOG_DIR
-    LOG_DIR = Path(p)
+    path = Path(p)
+    LOG_DIR = path if len(path.parts) > 1 else data_dir("experiments") / p
 
 
 def is_complete(path: Path) -> bool:
@@ -134,14 +137,15 @@ def main() -> int:
     ap.add_argument("--budget", type=float, default=270,
                     help="本次调用的时间预算（秒），超时前不再开新局")
     ap.add_argument("--seed-base", type=int, default=1000)
-    ap.add_argument("--logdir", default="logs", help="对局日志目录（分组实验用）")
+    ap.add_argument("--logdir", default="6p_flash",
+                    help="实验组名（存到 data/experiments/<组名>/）或完整目录路径")
     ap.add_argument("--stats-only", action="store_true")
     args = ap.parse_args()
 
     set_log_dir(args.logdir)
     with open(args.config, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
-    LOG_DIR.mkdir(exist_ok=True)
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
 
     if not args.stats_only:
         t0 = time.time()

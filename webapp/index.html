@@ -3,719 +3,173 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>🐺 多Agent狼人杀 · 人机对局</title>
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
-         background: #14151f; color: #e6e6e6; height: 100vh;
-         display: flex; flex-direction: column; }
-  header { padding: 10px 18px; background: #1d1f2e; display: flex;
-           align-items: center; gap: 12px; border-bottom: 1px solid #333; }
-  header h1 { font-size: 17px; color: #bb9af7; }
-  #status { font-size: 13px; color: #888; }
-  main { flex: 1; display: flex; min-height: 0; }
-  #feed { flex: 1; overflow-y: auto; padding: 14px 18px; }
-  #sidebar { width: 210px; background: #1d1f2e; border-left: 1px solid #333;
-             padding: 14px; }
-  .msg { margin: 5px 0; padding: 7px 11px; border-radius: 6px;
-         background: #24283b; font-size: 14px; line-height: 1.55;
-         white-space: pre-wrap; word-break: break-all; }
-  .msg.private { background: #3d2f16; border-left: 3px solid #e0af68; }
-  .msg.private::before { content: "🔒 "; }
-  .msg.wolf { background: #3b1f2a; border-left: 3px solid #f7768e; }
-  .msg.system { background: transparent; color: #7aa2f7; font-weight: bold;
-                text-align: center; padding: 10px 0 2px; }
-  #role-card { background: #2d2640; border: 1px solid #bb9af7;
-               border-radius: 8px; padding: 12px; margin-bottom: 12px;
-               font-size: 14px; line-height: 1.7; display: none; }
-  #roster div { font-size: 13px; padding: 3px 0; color: #aaa; }
-  #roster div.dead { color: #555; text-decoration: line-through; }
-  #roster div.dead::after { content: "（已出局）"; text-decoration: none;
-                            color: #f7768e; font-size: 11px; }
-  #thinking-line { display: none; align-items: center; gap: 8px;
-                  padding: 6px 18px; background: #1d1f2e; font-size: 13px;
-                  color: #7aa2f7; border-top: 1px solid #333; }
-  .spinner { width: 12px; height: 12px; border: 2px solid #364a82;
-             border-top-color: #7aa2f7; border-radius: 50%;
-             animation: spin 0.8s linear infinite; flex: none; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  .dots::after { content: ""; animation: dots 1.2s steps(4) infinite; }
-  @keyframes dots { 0% { content: ""; } 25% { content: "."; }
-                    50% { content: ".."; } 75% { content: "..."; } }
-  #inputbar { padding: 10px 14px; background: #1d1f2e;
-              border-top: 1px solid #333; }
-  #ask-prompt { font-size: 14px; color: #e0af68; margin-bottom: 8px;
-                display: none; }
-  #choices { display: none; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
-  #choices button { background: #364a82; color: #fff; border: none;
-                    padding: 7px 16px; border-radius: 6px; cursor: pointer;
-                    font-size: 14px; }
-  #choices button:hover { background: #4a63a8; }
-  #choices button.abstain { background: #555; }
-  #textrow { display: flex; gap: 8px; }
-  #textin { flex: 1; background: #24283b; border: 1px solid #444; color: #eee;
-            padding: 9px 12px; border-radius: 6px; font-size: 14px; outline: none; }
-  #textin:disabled { opacity: 0.4; }
-  #sendbtn { background: #9ece6a; color: #14151f; border: none; padding: 0 20px;
-             border-radius: 6px; font-size: 14px; font-weight: bold; cursor: pointer; }
-  #sendbtn:disabled { opacity: 0.4; cursor: default; }
-  #lobby { position: fixed; inset: 0; background: rgba(10,10,18,0.92);
-           display: flex; align-items: center; justify-content: center; z-index: 10; }
-  #lobby .panel { background: #1d1f2e; border: 1px solid #444;
-                  border-radius: 12px; padding: 32px 40px; width: 380px; }
-  #lobby h2 { color: #bb9af7; margin-bottom: 18px; text-align: center; }
-  #lobby .group { margin-bottom: 16px; }
-  #lobby .label { font-size: 13px; color: #999; margin-bottom: 6px; }
-  #lobby .opts { display: flex; flex-wrap: wrap; gap: 8px; }
-  #lobby .opt { background: #24283b; border: 1px solid #444; color: #ddd;
-                padding: 7px 14px; border-radius: 6px; cursor: pointer; font-size: 14px; }
-  #lobby .opt.sel { background: #364a82; border-color: #7aa2f7; color: #fff; }
-  #lobby .opt.disabled { opacity: 0.35; cursor: not-allowed; }
-  #startbtn { width: 100%; background: #9ece6a; color: #14151f; border: none;
-              padding: 11px; border-radius: 8px; font-size: 16px;
-              font-weight: bold; cursor: pointer; margin-top: 6px; }
-  .gameover { background: #2d2640 !important; border: 1px solid #bb9af7;
-              font-size: 15px !important; }
-  #endpanel { position: fixed; inset: 0; background: rgba(10,10,18,0.88);
-              display: none; align-items: center; justify-content: center; z-index: 9; }
-  #endpanel .panel { background: #1d1f2e; border: 1px solid #bb9af7;
-                     border-radius: 12px; padding: 24px 28px; width: 640px;
-                     max-width: 92vw; max-height: 86vh; overflow-y: auto; }
-  #endpanel h2 { text-align: center; margin-bottom: 10px; }
-  #end-reveal { background: #24283b; border-radius: 8px; padding: 10px 14px;
-                font-size: 13px; color: #ccc; line-height: 1.7; margin-bottom: 14px; }
-  #review-box { background: #14151f; border: 1px solid #444; border-radius: 8px;
-                padding: 12px 16px; font-size: 14px; line-height: 1.7;
-                max-height: 46vh; overflow-y: auto; margin-bottom: 14px; }
-  #review-box h3 { color: #bb9af7; margin: 12px 0 4px; font-size: 15px; }
-  #review-box h4 { color: #7aa2f7; margin: 10px 0 3px; font-size: 14px; }
-  #review-box p { margin: 4px 0; }
-  #review-box li { margin: 2px 0 2px 18px; }
-  #review-box .loading { color: #e0af68; }
-  #end-btns { display: flex; gap: 10px; }
-  #end-btns button { flex: 1; border: none; padding: 10px; border-radius: 8px;
-                     font-size: 15px; font-weight: bold; cursor: pointer; }
-  #btn-back { background: #364a82; color: #fff; }
-  #btn-again { background: #9ece6a; color: #14151f; }
-  #btn-end { background: none; border: 1px solid #bb9af7; color: #bb9af7;
-             border-radius: 6px; padding: 3px 10px; font-size: 13px;
-             cursor: pointer; display: none; }
-  #hist-list { max-height: 150px; overflow-y: auto; }
-  .hist-item { background: #24283b; border: 1px solid #444; color: #ccc;
-               border-radius: 6px; padding: 6px 10px; margin: 4px 0;
-               font-size: 12px; cursor: pointer; text-align: left; width: 100%; }
-  .hist-item:hover { border-color: #7aa2f7; color: #fff; }
-  .modetabs { display: flex; gap: 8px; margin-bottom: 16px; }
-  .modetab { flex: 1; background: #24283b; border: 1px solid #444; color: #aaa;
-             padding: 8px; border-radius: 8px; cursor: pointer; font-size: 14px; }
-  .modetab.sel { background: #364a82; border-color: #7aa2f7; color: #fff; }
-  .roombtn { background: #9ece6a; color: #14151f; border: none; padding: 10px;
-             border-radius: 8px; font-size: 15px; font-weight: bold;
-             cursor: pointer; width: 100%; }
-  #multi-pane input, #roomlobby input { background: #24283b; border: 1px solid #444;
-             color: #eee; padding: 9px 12px; border-radius: 6px; font-size: 14px;
-             outline: none; width: 100%; }
-  #roomlobby { position: fixed; inset: 0; background: rgba(10,10,18,0.92);
-               display: flex; align-items: center; justify-content: center; z-index: 10; }
-  #roomlobby .panel { background: #1d1f2e; border: 1px solid #444;
-                      border-radius: 12px; padding: 32px 40px; width: 380px; }
-  #roomlobby h2 { color: #bb9af7; margin-bottom: 18px; text-align: center; }
-  #roomplayers { font-size: 14px; }
-  #roomplayers .rp { padding: 6px 10px; background: #24283b; border-radius: 6px;
-                     margin: 4px 0; display: flex; justify-content: space-between; }
-  #roomplayers .rp .hostbadge { color: #e0af68; font-size: 12px; }
-  #roomlobby .group { margin-bottom: 16px; }
-  #roomlobby .label { font-size: 13px; color: #999; margin-bottom: 6px; }
-  #roomlobby .opts { display: flex; flex-wrap: wrap; gap: 8px; }
-  #roomlobby .opt { background: #24283b; border: 1px solid #444; color: #ddd;
-                    padding: 7px 14px; border-radius: 6px; cursor: pointer; font-size: 14px; }
-  #roomlobby .opt.sel { background: #364a82; border-color: #7aa2f7; color: #fff; }
-  #roomlobby .opt.locked { opacity: 0.5; cursor: not-allowed; }
-  #roomstartbtn { width: 100%; background: #9ece6a; color: #14151f; border: none;
-                  padding: 11px; border-radius: 8px; font-size: 16px;
-                  font-weight: bold; cursor: pointer; margin-top: 6px; }
-  #roomstartbtn:disabled { opacity: 0.4; cursor: default; }
-  #leaveroombtn { width: 100%; margin-top: 8px; background: none;
-                  border: 1px solid #666; color: #999; padding: 8px;
-                  border-radius: 8px; cursor: pointer; }
-  #roster div.afk::after { content: "（托管中）"; color: #e0af68; font-size: 11px; }
-  #discuss-box { border-top: 1px solid #444; padding-top: 10px; margin-bottom: 12px; }
-  #discuss-log { max-height: 30vh; overflow-y: auto; margin-bottom: 8px; }
-  .dmsg { background: #24283b; border-radius: 6px; padding: 6px 10px;
-          margin: 5px 0; font-size: 13px; line-height: 1.6; }
-  .dmsg b { color: #7aa2f7; }
-  .dmsg.me { background: #2d3a24; }
-  .dmsg.me b { color: #9ece6a; }
-  #discuss-row { display: flex; gap: 8px; }
-  #discuss-in { flex: 1; background: #24283b; border: 1px solid #444; color: #eee;
-                padding: 8px 12px; border-radius: 6px; font-size: 13px; outline: none; }
-  #discuss-send { background: #7aa2f7; color: #14151f; border: none;
-                  padding: 0 16px; border-radius: 6px; font-weight: bold; cursor: pointer; }
-  #discuss-title { font-size: 13px; color: #e0af68; margin-bottom: 6px; }
-  .micbtn { background: #364a82; color: #fff; border: none; padding: 0 12px;
-            border-radius: 6px; font-size: 15px; cursor: pointer; flex: none; }
-  .micbtn:disabled { opacity: 0.4; cursor: default; }
-  .micbtn.recording { background: #f7768e; animation: pulse 1s infinite; }
-  @keyframes pulse { 50% { opacity: 0.5; } }
-</style>
+<title>月下狼人杀</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐺</text></svg>">
+<link rel="stylesheet" href="/static/css/app.css?v=9">
 </head>
-<body>
-<header>
-  <h1>🐺 多Agent狼人杀 · 人机对局</h1>
-  <span id="status">等待开局</span>
-  <button id="btn-end">🏁 结算 / 复盘</button>
+<body class="night phase-lobby">
+
+<!-- 世界背景：天空、星星、日月、雾、村庄剪影 -->
+<div id="world">
+  <div id="sky"></div><div id="stars"></div>
+  <div id="celestial"><div class="moon"></div><div class="sun"></div></div>
+  <div class="fog"></div><div class="fog f2"></div>
+  <div id="village"></div><div id="vignette"></div>
+</div>
+
+<header id="topbar">
+  <div class="brand"><span id="brand-icon"></span><span>月下狼人杀</span></div>
+  <div id="phase-pill" class="hidden"><span class="pi" id="phase-icon"></span><b id="phase-text"></b><small id="phase-sub"></small></div>
+  <div id="status" class="status"></div>
+  <div class="top-actions">
+    <button id="btn-chron" class="btn ghost sm">📜 纪事</button>
+    <button id="btn-end" class="btn ghost sm hidden">🏁 结算</button>
+    <button id="btn-home" class="btn ghost sm hidden">🏠 大厅</button>
+  </div>
 </header>
-<main>
-  <div id="feed"></div>
-  <div id="sidebar">
-    <div id="role-card"></div>
-    <div id="roster"></div>
-  </div>
+
+<main id="game">
+  <section id="stage">
+    <div id="table">
+      <div id="ring"></div>
+      <div id="hearth"><div id="fire"></div><div id="hearth-title">等待开局</div><div id="hearth-sub"></div></div>
+      <div id="seats"></div>
+    </div>
+    <div id="dock">
+      <div id="idle"><span class="spinner"></span><span id="idle-text">静候村庄苏醒…</span></div>
+      <div id="ask" class="hidden">
+        <div id="ask-art"></div>
+        <div id="ask-body">
+          <div id="ask-kicker"></div>
+          <div id="ask-prompt"></div>
+          <div id="choices"></div>
+          <div id="textrow" class="hidden">
+            <button id="micbtn" class="micbtn" title="语音输入（说完自动转文字）">🎤</button>
+            <div class="inputwrap"><input id="textin" placeholder="说点什么…（Enter 发送）" autocomplete="off"><span id="counter"></span></div>
+            <button id="sendbtn" class="btn gold">发言</button>
+          </div>
+        </div>
+        <div id="ask-timer" class="hidden"><svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="17"/><circle id="timer-arc" cx="20" cy="20" r="17"/></svg><span id="timer-num"></span></div>
+      </div>
+    </div>
+    <div id="mycard" class="hidden" title="点击查看身份"></div>
+  </section>
+  <aside id="chronicle">
+    <div class="chron-head"><span class="serif">村庄纪事</span><span id="chron-sub" class="muted xs"></span></div>
+    <div id="feed"></div>
+  </aside>
 </main>
-<div id="thinking-line"><span class="spinner"></span><span id="thinking-text"></span><span class="dots"></span></div>
-<div id="inputbar">
-  <div id="ask-prompt"></div>
-  <div id="choices"></div>
-  <div id="textrow">
-    <button id="micbtn" class="micbtn" title="语音输入（说完自动转文字）" disabled>🎤</button>
-    <input id="textin" placeholder="等待提问…" disabled>
-    <button id="sendbtn" disabled>发送</button>
+
+<!-- 过场字幕：天黑 / 天亮 / 死讯 -->
+<div id="banner"><div class="b-kicker"></div><div class="b-title"></div><div class="b-sub"></div></div>
+
+<!-- 开局身份揭晓 -->
+<div id="reveal" class="overlay hidden">
+  <div class="reveal-wrap">
+    <div class="reveal-kicker serif">你的身份是</div>
+    <div class="flip"><div class="flip-inner"><div class="face back"></div><div class="face front"></div></div></div>
+    <div class="reveal-name serif"></div>
+    <div class="reveal-desc"></div>
+    <div class="reveal-mates"></div>
+    <button id="reveal-ok" class="btn gold">我记住了</button>
   </div>
 </div>
 
-<div id="endpanel">
-  <div class="panel">
-    <h2 id="end-title">对局结束</h2>
-    <div id="end-reveal"></div>
-    <div id="review-box"><span class="loading">🎙️ 解说员复盘生成中…（可以先点下方按钮回看本局对话）</span></div>
-    <div id="discuss-box">
-      <div id="discuss-title">💬 赛后讨论 · 全员已亮身份。点名谁谁回（如「Bob 你为什么验我」），不点名则全场一起回</div>
+<!-- 终局 -->
+<div id="endpanel" class="overlay hidden">
+  <div class="end-wrap">
+    <button class="modal-x" id="btn-back" title="收起，回看本局">✕</button>
+    <div id="end-banner"><div id="end-kicker" class="serif"></div><h2 id="end-title" class="serif"></h2><div id="end-sub" class="muted"></div></div>
+    <div id="end-cards"></div>
+    <div class="tabs" id="end-tabs">
+      <button class="tab sel" data-pane="review-box">🎙️ 解说复盘</button>
+      <button class="tab" data-pane="discuss-box" id="tab-discuss">💬 赛后讨论</button>
+    </div>
+    <div id="review-box" class="pane md"></div>
+    <div id="discuss-box" class="pane hidden">
+      <div class="muted xs">全员已亮身份。点名谁谁回（如「Bob 你为什么验我」），不点名则全场一起回。</div>
+      <div id="discuss-quick"></div>
       <div id="discuss-log"></div>
-      <div id="discuss-row">
-        <button id="micbtn2" class="micbtn" title="语音输入（说完自动转文字）">🎤</button>
-        <input id="discuss-in" placeholder="例如：Carol 你为什么第一晚验 David？">
-        <button id="discuss-send">问全场</button>
+      <div class="row">
+        <button id="micbtn2" class="micbtn" title="语音输入">🎤</button>
+        <input id="discuss-in" placeholder="例如：Carol 你为什么第一晚验 David？" autocomplete="off">
+        <button id="discuss-send" class="btn gold sm">问全场</button>
       </div>
     </div>
-    <div id="end-btns">
-      <button id="btn-back">📜 回看本局对话</button>
-      <button id="btn-again">🔄 再来一局</button>
+    <div class="end-foot">
+      <button id="btn-back2" class="btn ghost">📜 回看本局</button>
+      <button id="btn-again" class="btn gold">🔄 再来一局</button>
     </div>
   </div>
 </div>
 
-<div id="lobby">
-  <div class="panel">
-    <h2>🐺 狼人杀 · 开局</h2>
-    <div class="modetabs">
-      <button class="modetab sel" id="tab-single">👤 单人 + AI</button>
-      <button class="modetab" id="tab-multi">👥 多人房间</button>
+<!-- 大厅 -->
+<div id="lobby" class="overlay">
+  <div class="lobby-wrap">
+    <div class="hero">
+      <div class="hero-sub serif">— 一个村庄 · 一轮满月 · 谁是狼 —</div>
+      <h1 class="serif">月下狼人杀</h1>
+      <p class="muted">和 AI 同桌博弈。它们会焊跳、自刀、倒钩、甩锅，赛后亮出身份和你复盘。</p>
     </div>
-    <div id="single-pane">
-      <div class="group">
-        <div class="label">局型</div>
-        <div class="opts" id="cfg-opts">
-          <button class="opt sel" data-v="6p">6 人局</button>
-          <button class="opt" data-v="8p">8 人局（含猎人）</button>
+    <div class="deck" id="role-opts"></div>
+    <div id="role-desc" class="serif"></div>
+    <div class="lobby-grid">
+      <div class="panel">
+        <div class="tabs">
+          <button class="tab sel" id="tab-single">👤 单人 + AI</button>
+          <button class="tab" id="tab-multi">👥 多人房间</button>
+        </div>
+        <div id="single-pane">
+          <div class="label">局型</div>
+          <div class="opts cfg" id="cfg-opts">
+            <button class="opt sel" data-v="6p"><b>6 人局</b><small>2 狼 · 预言家 · 女巫 · 2 民</small></button>
+            <button class="opt" data-v="8p"><b>8 人局</b><small>3 狼 · 预 · 女 · 猎 · 2 民</small></button>
+          </div>
+          <button id="startbtn" class="btn gold big">入 夜</button>
+        </div>
+        <div id="multi-pane" class="hidden">
+          <div class="label">你的昵称</div>
+          <input id="nickin" placeholder="例如：阿泽" maxlength="12" autocomplete="off">
+          <button id="createroombtn" class="btn gold big">🏠 创建房间</button>
+          <div class="divider"><span>或加入已有房间</span></div>
+          <div class="row">
+            <input id="roomcodein" class="code-in" placeholder="房间码" maxlength="4" autocomplete="off">
+            <button id="joinroombtn" class="btn ghost">🚪 加入</button>
+          </div>
+          <p class="muted xs tip">局域网玩法：朋友浏览器打开 <code>http://房主IP:7100</code> 输入房间码；
+            人数不足由 AI 补位，挂机超时由 AI 托管。房间里身份随机发放。</p>
         </div>
       </div>
-      <div class="group">
-        <div class="label">你想扮演</div>
-        <div class="opts" id="role-opts">
-          <button class="opt sel" data-v="random">🎲 随机</button>
-          <button class="opt" data-v="werewolf">🐺 狼人</button>
-          <button class="opt" data-v="seer">🔮 预言家</button>
-          <button class="opt" data-v="witch">🧪 女巫</button>
-          <button class="opt" data-v="villager">👨‍🌾 平民</button>
-          <button class="opt" data-v="hunter" title="6 人局没有猎人，请选 8 人局">🔫 猎人（8人局）</button>
-        </div>
+      <div class="panel">
+        <div class="label">📜 往期对局 <span class="muted xs">点击回看完整对话与复盘</span></div>
+        <div id="hist-stats"></div>
+        <div id="hist-list"><div class="muted xs">加载中…</div></div>
       </div>
-      <button id="startbtn">开始对局</button>
-    </div>
-    <div id="multi-pane" style="display:none">
-      <div class="group">
-        <div class="label">你的昵称</div>
-        <input id="nickin" placeholder="例如：阿泽" maxlength="12">
-      </div>
-      <div class="group">
-        <button id="createroombtn" class="roombtn">🏠 创建房间</button>
-        <div style="display:flex;gap:8px;margin-top:8px">
-          <input id="roomcodein" placeholder="房间码" maxlength="4"
-                 style="flex:1;text-transform:uppercase">
-          <button id="joinroombtn" class="roombtn" style="flex:1">🚪 加入房间</button>
-        </div>
-      </div>
-      <div style="font-size:12px;color:#888;line-height:1.6">
-        局域网玩法：房主启动服务器后，朋友浏览器打开
-        <code>http://房主IP:7100</code> 输入房间码即可加入；
-        人数不足由 AI 自动补位。人挂机 75 秒不操作会由 AI 托管代打。
-      </div>
-    </div>
-    <div class="group" style="margin-top:16px">
-      <div class="label">📜 历史对局（点击回看完整对话与复盘）</div>
-      <div id="hist-list"><div style="font-size:12px;color:#666">加载中…</div></div>
     </div>
   </div>
 </div>
 
-<div id="roomlobby" style="display:none">
-  <div class="panel">
-    <h2>🏠 房间 <span id="roomcode" style="letter-spacing:4px"></span></h2>
-    <div style="font-size:12px;color:#888;text-align:center;margin:-10px 0 14px">
-      朋友打开本页面 → 多人房间 → 输入房间码加入</div>
-    <div class="group">
-      <div class="label">玩家（<span id="roomcount"></span>）</div>
-      <div id="roomplayers"></div>
+<!-- 房间 -->
+<div id="roomlobby" class="overlay hidden">
+  <div class="panel room">
+    <div class="room-head"><span class="muted xs">房间码</span><div id="roomcode" class="roomcode"></div>
+      <button id="copycode" class="btn ghost sm">复制</button></div>
+    <p class="muted xs center">朋友打开本页面 → 多人房间 → 输入房间码加入</p>
+    <div class="label">玩家 <span id="roomcount" class="muted"></span></div>
+    <div id="roomplayers"></div>
+    <div class="label">局型（房主设置）</div>
+    <div class="opts cfg" id="room-cfg-opts">
+      <button class="opt sel" data-v="6p"><b>6 人局</b><small>2 狼 · 预 · 女 · 2 民</small></button>
+      <button class="opt" data-v="8p"><b>8 人局</b><small>3 狼 · 预 · 女 · 猎 · 2 民</small></button>
     </div>
-    <div class="group">
-      <div class="label">局型（房主设置）</div>
-      <div class="opts" id="room-cfg-opts">
-        <button class="opt sel" data-v="6p">6 人局</button>
-        <button class="opt" data-v="8p">8 人局（含猎人）</button>
-      </div>
-    </div>
-    <button id="roomstartbtn">开始对局</button>
-    <button id="leaveroombtn">离开房间</button>
+    <button id="roomstartbtn" class="btn gold big">入 夜</button>
+    <div id="room-wait" class="muted center hidden"><span class="spinner"></span> 等待房主开始对局…</div>
+    <button id="leaveroombtn" class="btn ghost" style="width:100%;margin-top:10px">离开房间</button>
   </div>
 </div>
 
-<script>
-const feed = document.getElementById("feed");
-const statusEl = document.getElementById("status");
-const askPrompt = document.getElementById("ask-prompt");
-const choicesEl = document.getElementById("choices");
-const textin = document.getElementById("textin");
-const sendbtn = document.getElementById("sendbtn");
-const roleCard = document.getElementById("role-card");
-const roster = document.getElementById("roster");
-const lobby = document.getElementById("lobby");
-
-let ws, selCfg = "6p", selRole = "random", gameEnded = false, liveDiscuss = false;
-let rosterPlayers = [], myName = "";
-// 多人房间模式状态
-let roomMode = false, isHost = false, myToken = "", myNick = "", nicknames = {};
-
-function renderRoster(me) {
-  if (me) myName = me;
-  roster.innerHTML = "<b style='font-size:13px'>玩家</b>" + rosterPlayers.map(p => {
-    const nick = nicknames[p.name] ? `（${escHtml(nicknames[p.name])}）` : "";
-    const cls = (p.alive ? "" : "dead") + (p.afk && p.alive ? " afk" : "");
-    const icon = nicknames[p.name] ? "🧑" : "🤖";
-    return `<div class="${cls}">${icon} ${escHtml(p.name)}${p.name === myName ? "（你）" : nick}</div>`;
-  }).join("");
-}
-
-function mdToHtml(md) {
-  const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  return md.split("\n").map(line => {
-    let l = esc(line).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`(.+?)`/g, "<code>$1</code>");
-    if (l.startsWith("### ")) return `<h4>${l.slice(4)}</h4>`;
-    if (l.startsWith("## ")) return `<h3>${l.slice(3)}</h3>`;
-    if (l.startsWith("# ")) return `<h3>${l.slice(2)}</h3>`;
-    if (/^[-*] /.test(l)) return `<li>${l.slice(2)}</li>`;
-    if (/^\d+\. /.test(l)) return `<li>${l}</li>`;
-    if (!l.trim()) return "";
-    return `<p>${l}</p>`;
-  }).join("");
-}
-
-function bindOpts(id, cb) {
-  document.getElementById(id).addEventListener("click", e => {
-    if (!e.target.classList.contains("opt") || e.target.classList.contains("disabled")) return;
-    document.querySelectorAll("#" + id + " .opt").forEach(b => b.classList.remove("sel"));
-    e.target.classList.add("sel");
-    cb(e.target.dataset.v);
-  });
-}
-bindOpts("cfg-opts", v => { selCfg = v; syncRoleOpts(); });
-bindOpts("role-opts", v => selRole = v);
-
-function syncRoleOpts() {
-  // 猎人只存在于 8 人局：6 人局时置灰禁用并注明；已选猎人则退回随机
-  const h = document.querySelector('#role-opts .opt[data-v="hunter"]');
-  const is8 = selCfg === "8p";
-  h.classList.toggle("disabled", !is8);
-  h.title = is8 ? "扮演猎人：死亡（非被毒）时可开枪带走一人"
-                : "6 人局没有猎人，请选择 8 人局";
-  if (!is8 && selRole === "hunter") {
-    selRole = "random";
-    document.querySelectorAll("#role-opts .opt").forEach(b =>
-      b.classList.toggle("sel", b.dataset.v === "random"));
-  }
-}
-syncRoleOpts();
-
-function addMsg(text, kind) {
-  const div = document.createElement("div");
-  div.className = "msg " + (kind || "public");
-  if (text.startsWith("-----") || text.startsWith("=====")) div.className = "msg system";
-  // 转义后把 **关键信息** 渲染成粗体，长发言一眼抓到重点
-  div.innerHTML = escHtml(text).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
-  feed.appendChild(div);
-  feed.scrollTop = feed.scrollHeight;
-}
-
-function setWaiting(on) {
-  textin.disabled = on;
-  sendbtn.disabled = on;
-  document.getElementById("micbtn").disabled = on;
-  if (!on) { askPrompt.style.display = "none"; choicesEl.style.display = "none";
-             textin.placeholder = "等待提问…"; }
-}
-
-function showAsk(m) {
-  askPrompt.textContent = "❓ " + m.prompt;
-  askPrompt.style.display = "block";
-  if (m.kind === "choice") {
-    choicesEl.innerHTML = "";
-    m.candidates.forEach(c => {
-      const b = document.createElement("button");
-      b.textContent = c;
-      b.onclick = () => { answer(c); };
-      choicesEl.appendChild(b);
-    });
-    if (m.allow_abstain) {
-      const b = document.createElement("button");
-      b.textContent = "弃权/不用";
-      b.className = "abstain";
-      b.onclick = () => { answer(""); };
-      choicesEl.appendChild(b);
-    }
-    choicesEl.style.display = "flex";
-  } else {
-    textin.disabled = false;
-    textin.placeholder = "输入你的发言…（也可以点 🎤 语音输入）";
-    sendbtn.disabled = false;
-    document.getElementById("micbtn").disabled = false;
-    textin.focus();
-  }
-}
-
-function answer(text) {
-  ws.send(JSON.stringify({t: "answer", text}));
-  // 答完立刻收起提问区（比如女巫用完毒药，按钮不再挂着）
-  askPrompt.style.display = "none";
-  choicesEl.style.display = "none";
-  choicesEl.innerHTML = "";
-  setWaiting(true);
-}
-
-function showThinking(on, label) {
-  const el = document.getElementById("thinking-line");
-  if (on && label) {
-    document.getElementById("thinking-text").textContent = label;
-    el.style.display = "flex";
-  } else {
-    el.style.display = "none";
-  }
-}
-
-sendbtn.onclick = () => { if (textin.value.trim()) { answer(textin.value.trim()); textin.value = ""; } };
-textin.addEventListener("keydown", e => { if (e.key === "Enter") sendbtn.onclick(); });
-
-// ---------- 语音输入（浏览器自带语音识别，文字输入保留）----------
-// Chrome/Edge 的 Web Speech API：点 🎤 开始录音，再点（或说完停顿）自动结束，
-// 识别结果实时填进输入框，确认后再手动发送——不会自动替你发出去。
-function setupMic(btn, input) {
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) {  // 浏览器不支持就藏掉按钮，不影响文字输入
-    btn.style.display = "none";
-    return;
-  }
-  let rec = null, active = false;
-  btn.onclick = () => {
-    if (input.disabled) return;
-    if (active) { rec.stop(); return; }
-    rec = new SR();
-    rec.lang = "zh-CN";
-    rec.interimResults = true;   // 边说边出字
-    rec.continuous = false;
-    const base = input.value.trim() ? input.value.trim() + " " : "";
-    rec.onresult = e => {
-      let txt = "";
-      for (const r of e.results) txt += r[0].transcript;
-      input.value = base + txt;
-    };
-    rec.onend = () => { active = false; btn.classList.remove("recording"); };
-    rec.onerror = e => {
-      active = false;
-      btn.classList.remove("recording");
-      if (e.error === "not-allowed")
-        addMsg("🎤 麦克风权限被拒绝了，请在浏览器地址栏允许麦克风后重试", "system");
-      else if (e.error === "network")
-        addMsg("🎤 语音识别服务连不上（浏览器在线识别需要联网），这次先用键盘吧", "system");
-    };
-    active = true;
-    btn.classList.add("recording");
-    try { rec.start(); } catch { active = false; btn.classList.remove("recording"); }
-  };
-}
-setupMic(document.getElementById("micbtn"), textin);
-setupMic(document.getElementById("micbtn2"), document.getElementById("discuss-in"));
-
-function connect() {  // 页面加载即建立连接，历史对局不依赖开局
-  const proto = location.protocol === "https:" ? "wss" : "ws";
-  ws = new WebSocket(`${proto}://${location.host}/ws`);
-  ws.onmessage = ev => handle(JSON.parse(ev.data));
-  ws.onopen = () => ws.send(JSON.stringify({t: "history"}));
-  ws.onclose = () => { statusEl.textContent = "连接已断开（刷新页面重开）"; };
-}
-connect();
-
-function refreshHistory() {
-  if (ws && ws.readyState === WebSocket.OPEN)
-    ws.send(JSON.stringify({t: "history"}));
-}
-
-document.getElementById("startbtn").onclick = () => {
-  lobby.style.display = "none";
-  document.getElementById("endpanel").style.display = "none";
-  document.getElementById("btn-end").style.display = "none";
-  gameEnded = false;
-  feed.innerHTML = "";
-  roleCard.style.display = "none";
-  statusEl.textContent = "连接中…";
-  if (!ws || ws.readyState !== WebSocket.OPEN) connect();
-  const sendStart = () => ws.send(JSON.stringify({t: "start", config: selCfg, role: selRole}));
-  if (ws.readyState === WebSocket.OPEN) sendStart();
-  else ws.onopen = () => { sendStart(); refreshHistory(); };
-};
-
-function handle(m) {
-  if (m.t === "feed") addMsg(m.text, m.kind);
-  else if (m.t === "thinking") showThinking(m.on, m.label);
-  else if (m.t === "ask") { statusEl.textContent = "等待你的决策…"; showAsk(m); }
-  else if (m.t === "role") {
-    roleCard.innerHTML = `🎭 你的身份：<b>${m.role_name}</b>` +
-      (m.mates ? `<br>🐺 狼队友：${m.mates}` : "");
-    roleCard.style.display = "block";
-  }
-  else if (m.t === "started") {
-    statusEl.textContent = `对局进行中 · 你是 ${m.name}`;
-    if (m.nicknames) nicknames = m.nicknames;
-    if (roomMode) {  // 房间开局：收起房间大厅，清屏进对局
-      document.getElementById("roomlobby").style.display = "none";
-      lobby.style.display = "none";
-      document.getElementById("endpanel").style.display = "none";
-      document.getElementById("btn-end").style.display = "none";
-      gameEnded = false;
-      feed.innerHTML = "";
-      roleCard.style.display = "none";
-    }
-    rosterPlayers = m.players.map(name => ({name, alive: true, afk: false}));
-    renderRoster(m.name);
-  }
-  else if (m.t === "player_afk") {
-    const p = rosterPlayers.find(p => p.name === m.name);
-    if (p) { p.afk = m.afk; renderRoster(myName); }
-  }
-  else if (m.t === "dead") {
-    const p = rosterPlayers.find(p => p.name === m.name);
-    if (p) { p.alive = false; renderRoster(myName); }
-  }
-  else if (m.t === "game_over") {
-    statusEl.textContent = "对局结束";
-    showThinking(false);
-    const who = m.winner === "village" ? "🎉 好人阵营获胜" : "🐺 狼人阵营获胜";
-    addMsg(`${who}\n身份揭晓：${m.reveal}`, "public");
-    feed.lastChild.classList.add("gameover");
-    // 终局面板：胜负 + 身份揭晓 + 复盘 + 赛后讨论，不遮挡对话记录
-    gameEnded = true;
-    liveDiscuss = true;
-    document.getElementById("end-title").textContent = who;
-    document.getElementById("end-reveal").innerHTML =
-      "<b>身份揭晓</b><br>" + m.reveal.split("；").map(s => escHtml(s)).join("<br>");
-    document.getElementById("review-box").innerHTML =
-      '<span class="loading">🎙️ 解说员复盘生成中…（可以先点下方按钮回看本局对话）</span>';
-    document.getElementById("discuss-log").innerHTML = "";
-    document.getElementById("discuss-box").style.display = "block";
-    document.getElementById("endpanel").style.display = "flex";
-    document.getElementById("btn-end").style.display = "inline-block";
-    document.getElementById("startbtn").textContent = "再来一局";
-  }
-  else if (m.t === "review") {
-    document.getElementById("review-box").innerHTML = mdToHtml(m.md);
-    refreshHistory();  // 本局已存档，刷新大厅历史列表
-  }
-  else if (m.t === "discuss_msg") {
-    addDiscuss(m.player + "（" + m.role_name + "）", m.text, false);
-  }
-  else if (m.t === "history_list") {
-    const el = document.getElementById("hist-list");
-    if (!m.games.length) { el.innerHTML = '<div style="font-size:12px;color:#666">还没有对局记录</div>'; return; }
-    el.innerHTML = "";
-    m.games.forEach(g => {
-      const b = document.createElement("button");
-      b.className = "hist-item";
-      const who = g.winner === "village" ? "🎉好人胜" : "🐺狼人胜";
-      b.textContent = `${g.ts} · ${g.cfg === "8p" ? "8人局" : "6人局"} · ${who} · 你是${g.players.find(p => p.name === (g.human || ""))?.role_name || "?"}`;
-      b.onclick = () => ws.send(JSON.stringify({t: "load_history", id: g.id}));
-      el.appendChild(b);
-    });
-  }
-  else if (m.t === "history_game") {  // 回看历史对局：重放对话流 + 结算面板（无讨论）
-    const g = m.game;
-    lobby.style.display = "none";
-    showThinking(false);
-    feed.innerHTML = "";
-    gameEnded = true;
-    liveDiscuss = false;
-    g.feed.forEach(e => {
-      if (e.t === "feed") addMsg(e.text, e.kind);
-      else if (e.t === "role") {
-        roleCard.innerHTML = `🎭 本局你的身份：<b>${e.role_name}</b>` +
-          (e.mates ? `<br>🐺 狼队友：${e.mates}` : "");
-        roleCard.style.display = "block";
-      }
-    });
-    const who = g.winner === "village" ? "🎉 好人阵营获胜" : "🐺 狼人阵营获胜";
-    statusEl.textContent = `回看历史对局 · ${g.ts}`;
-    document.getElementById("end-title").textContent = who + "（历史回放）";
-    document.getElementById("end-reveal").innerHTML =
-      "<b>身份揭晓</b><br>" + (g.reveal || "").split("；").map(s => escHtml(s)).join("<br>");
-    document.getElementById("review-box").innerHTML = mdToHtml(g.review || "（本局无复盘）");
-    document.getElementById("discuss-box").style.display = "none";
-    document.getElementById("endpanel").style.display = "flex";
-    document.getElementById("btn-end").style.display = "inline-block";
-  }
-}
-
-function addDiscuss(who, text, isMe) {
-  const div = document.createElement("div");
-  div.className = "dmsg" + (isMe ? " me" : "");
-  div.innerHTML = `<b>${escHtml(who)}：</b>${escHtml(text)}`;
-  const log = document.getElementById("discuss-log");
-  log.appendChild(div);
-  log.scrollTop = log.scrollHeight;
-}
-
-function sendDiscuss() {
-  const inp = document.getElementById("discuss-in");
-  const q = inp.value.trim();
-  if (!q || !liveDiscuss) return;
-  if (!roomMode) addDiscuss("你", q, true);  // 房间模式服务端会广播回来，不本地回显
-  ws.send(JSON.stringify({t: "discuss", text: q}));
-  inp.value = "";
-}
-document.getElementById("discuss-send").onclick = sendDiscuss;
-document.getElementById("discuss-in").addEventListener("keydown", e => { if (e.key === "Enter") sendDiscuss(); });
-
-function escHtml(s) {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-document.getElementById("btn-back").onclick = () => {
-  document.getElementById("endpanel").style.display = "none";  // 收起面板，对话记录仍在 feed 里可自由回看
-};
-document.getElementById("btn-end").onclick = () => {
-  if (gameEnded) document.getElementById("endpanel").style.display = "flex";
-};
-document.getElementById("btn-again").onclick = () => {
-  document.getElementById("endpanel").style.display = "none";
-  if (roomMode) {
-    showRoomLobby();  // 回房间大厅，房主可再开一局
-  } else {
-    lobby.style.display = "flex";
-    refreshHistory();  // 回大厅时刷新历史列表
-  }
-};
-
-// ==================== 多人房间模式 ====================
-const roomlobbyEl = document.getElementById("roomlobby");
-
-function enterRoom(firstMsg) {
-  // 房间模式需要一条全新的连接：服务端按首条消息路由单人/房间模式
-  if (ws && ws.readyState === WebSocket.OPEN) ws.close();
-  const proto = location.protocol === "https:" ? "wss" : "ws";
-  ws = new WebSocket(`${proto}://${location.host}/ws`);
-  ws.onmessage = ev => handle(JSON.parse(ev.data));
-  ws.onopen = () => ws.send(JSON.stringify(firstMsg));
-  ws.onclose = () => {
-    statusEl.textContent = "连接已断开（刷新页面重开）";
-    if (roomMode) { roomMode = false; lobby.style.display = "flex";
-                    roomlobbyEl.style.display = "none"; connect(); }
-  };
-}
-
-function showRoomLobby() {
-  lobby.style.display = "none";
-  roomlobbyEl.style.display = "flex";
-}
-
-document.getElementById("tab-single").onclick = () => {
-  document.getElementById("tab-single").classList.add("sel");
-  document.getElementById("tab-multi").classList.remove("sel");
-  document.getElementById("single-pane").style.display = "block";
-  document.getElementById("multi-pane").style.display = "none";
-};
-document.getElementById("tab-multi").onclick = () => {
-  document.getElementById("tab-multi").classList.add("sel");
-  document.getElementById("tab-single").classList.remove("sel");
-  document.getElementById("single-pane").style.display = "none";
-  document.getElementById("multi-pane").style.display = "block";
-  document.getElementById("nickin").focus();
-};
-
-function getNick() {
-  const n = document.getElementById("nickin").value.trim();
-  return n || "玩家" + Math.floor(Math.random() * 90 + 10);
-}
-document.getElementById("createroombtn").onclick = () => {
-  myNick = getNick();
-  localStorage.setItem("ww_nick", myNick);
-  enterRoom({t: "create_room", nickname: myNick});
-};
-document.getElementById("joinroombtn").onclick = () => {
-  const code = document.getElementById("roomcodein").value.trim().toUpperCase();
-  if (!code) { alert("输入 4 位房间码"); return; }
-  myNick = getNick();
-  localStorage.setItem("ww_nick", myNick);
-  enterRoom({t: "join_room", room: code, nickname: myNick});
-};
-document.getElementById("nickin").value = localStorage.getItem("ww_nick") || "";
-
-function renderRoomState(m) {
-  document.getElementById("roomcode").textContent = m.room;
-  document.getElementById("roomcount").textContent =
-    `${m.players.length} 人${m.ai_fill ? ` · AI 补位 ${m.ai_fill}` : ""}`;
-  document.getElementById("roomplayers").innerHTML = m.players.map(p =>
-    `<div class="rp"><span>🧑 ${escHtml(p.nick)}${p.nick === myNick ? "（你）" : ""}</span>` +
-    `${p.host ? '<span class="hostbadge">👑 房主</span>' : ""}</div>`).join("");
-  isHost = m.players.find(p => p.nick === myNick)?.host ?? isHost;
-  document.querySelectorAll("#room-cfg-opts .opt").forEach(b => {
-    b.classList.toggle("sel", b.dataset.v === m.config);
-    b.classList.toggle("locked", !isHost);
-  });
-  const sb = document.getElementById("roomstartbtn");
-  sb.style.display = isHost ? "block" : "none";
-  sb.textContent = m.state === "ENDED" ? "🔄 再来一局" : "开始对局";
-}
-
-document.getElementById("room-cfg-opts").addEventListener("click", e => {
-  if (!e.target.classList.contains("opt") || !isHost) return;
-  ws.send(JSON.stringify({t: "set_config", config: e.target.dataset.v}));
-});
-document.getElementById("roomstartbtn").onclick = () => {
-  if (isHost) ws.send(JSON.stringify({t: "room_start"}));
-};
-document.getElementById("leaveroombtn").onclick = () => location.reload();
-
-// 房间相关消息并入主分发
-const _handleBase = handle;
-handle = function(m) {
-  if (m.t === "joined") {
-    roomMode = true;
-    myToken = m.token;
-    isHost = m.host;
-    showRoomLobby();
-  } else if (m.t === "room_state") {
-    renderRoomState(m);
-  } else if (m.t === "room_error") {
-    alert(m.text);
-  } else {
-    _handleBase(m);
-  }
-};
-</script>
+<div id="toast"></div>
+<script src="/static/js/art.js?v=9"></script>
+<script src="/static/js/app.js?v=9"></script>
 </body>
 </html>

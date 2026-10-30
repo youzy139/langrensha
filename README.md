@@ -73,7 +73,7 @@ python server.py        # 浏览器打开 http://localhost:7100/
 | 标准 | 状态 |
 |---|---|
 | 一键跑完一局，终端实时打印白天发言 | ✅ `python main.py` |
-| 对局结束输出 `game_log.jsonl`，含每轮完整 prompt 和回复 | ✅ 含 reasoning 内心戏 |
+| 对局结束输出 `data/cli/<时间>/game.jsonl`，含每轮完整 prompt 和回复 | ✅ 含 reasoning 内心戏 |
 | 多局不卡死（超时 + 重试 + 兜底） | ✅ 50+ 局真实对局无一局中断 |
 
 **离线回归测试（无需 API Key）：**
@@ -126,7 +126,7 @@ AI 不是各自为战的答题机器，而是一套有纪律的博弈系统：
 
 ```bash
 python run_experiment.py --config config_pro_wolves_8p.yaml \
-    --logdir logs_8p --total 10 --budget 240
+    --logdir 8p_pro_wolves --total 10 --budget 240
 ```
 
 ## 🏗 架构
@@ -180,12 +180,19 @@ WEREWOLF_MOCK=1 python main.py        # Mock 离线测试（无需 API Key）
 │   ├── review.py              # AI 解说员复盘（坏行容错）
 │   └── replay.py              # HTML 回放页生成
 ├── webapp/                    # Web 人机对局：FastAPI + WebSocket
-│   ├── server.py              # 对局服务器：角色洗牌/思考动效/赛后点名讨论/历史存档
-│   ├── index.html             # 单页前端：大厅/对局/语音输入/终局结算/复盘/讨论区
-│   └── test_ws_client.py      # Mock 端到端回归测试
+│   ├── server.py              # 单人对局服务器：角色洗牌/思考动效/赛后点名讨论
+│   ├── rooms.py               # 多人房间：建房/加入/AI 补位/挂机托管
+│   ├── feedfmt.py             # 引擎文本 → 前端结构化消息（发言/投票/公告/出局）
+│   ├── archive.py             # 对局存档读写（data/web/<对局ID>/）
+│   ├── index.html + static/   # 前端：月下村庄场景、圆桌座位、手绘角色牌、纪事流、终局复盘
+│   └── test_*_client.py       # Mock 端到端回归测试（单人 / 多人房间）
 ├── docs/EXPERIMENT_REPORT.md  # 完整实验报告
 ├── docs/PROJECT_GUIDE.md      # 代码精读指南（学习向）
-└── logs*/                     # 各实验组对局日志与统计
+└── data/                      # 所有运行产物（结构见 werewolf/paths.py）
+    ├── web/<对局ID>/          # Web 对局：record.json（回放）+ events.jsonl（完整日志）
+    ├── cli/<时间>/            # main.py 命令行对局：日志 / 回放页 / 复盘
+    ├── experiments/<组>/      # 批量实验：只有 stats.json 和精选复盘入库
+    └── mock/                  # WEREWOLF_MOCK=1 的离线测试产物，可整个删掉
 ```
 
 ## 路线图

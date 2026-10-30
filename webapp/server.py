@@ -27,6 +27,7 @@ import uvicorn
 import yaml
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from werewolf.gamemaster import GameMaster
 from werewolf.logger import GameLogger
@@ -35,15 +36,19 @@ from werewolf.review import generate_review
 from werewolf.roles import ROLE_NAMES
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import archive  # noqa: E402  对局存档（data/web/<对局ID>/）
+from feedfmt import (RECORDED, game_over_msg, public_events,  # noqa: E402
+                     public_msg, wolf_msg)
 from rooms import RoomManager  # noqa: E402  多人房间模式（单人流程不受影响）
 
 CONFIGS = {
     "6p": ROOT / "config.yaml",
     "8p": ROOT / "config_8p_allflash.yaml",
 }
-HISTORY_DIR = Path(__file__).parent / "history"
 
 app = FastAPI(title="多Agent狼人杀 · 人机对局")
+app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"),
+          name="static")
 
 
 @app.get("/")
@@ -81,20 +86,12 @@ class WebLogger(GameLogger):
 
     def print(self, text: str = "") -> None:
         if text:
-            self.feed_q.put_nowait({"t": "feed", "kind": "public", "text": text})
+            self.feed_q.put_nowait(public_msg(text))
 
     def event(self, event_type, **payload):
         super().event(event_type, **payload)
-        # 把死亡信息结构化推给前端，右侧玩家栏实时标记"已出局"
-        dead: list[str] = []
-        if event_type == "day_announce":
-            dead = payload.get("deaths") or []
-        elif event_type == "day_vote" and payload.get("exiled"):
-            dead = [payload["exiled"]]
-        elif event_type == "hunter_shot" and payload.get("shot"):
-            dead = [payload["shot"]]
-        for name in dead:
-            self.feed_q.put_nowait({"t": "dead", "name": name})
+        for m in public_events(event_type, payload):
+            self.feed_q.put_nowait(m)
 
 
 class WebHumanAgent(PlayerAgent):
@@ -118,14 +115,15 @@ class WebHumanAgent(PlayerAgent):
 
     def wolf_hear(self, line: str) -> None:
         """队友在狼人频道发言：实时推到公屏（仅自己是狼时才会有此消息）。"""
-        self._feed.put_nowait({"t": "feed", "kind": "wolf",
-                               "text": "🐺 狼人频道 · " + line})
+        speaker, _, msg = line.partition(": ")
+        self._feed.put_nowait(wolf_msg(speaker, msg))
 
     async def _ask(self, prompt: str, candidates: list[str] | None = None,
-                   allow_abstain: bool = True) -> str:
+                   allow_abstain: bool = True, action: str = "") -> str:
         await self._feed.put({
             "t": "ask",
             "kind": "choice" if candidates else "text",
+            "action": action,  # 前端据此切换场景插画（speak/vote/kill/check/...）
             "prompt": prompt,
             "candidates": candidates or [],
             "allow_abstain": allow_abstain,
@@ -135,10 +133,10 @@ class WebHumanAgent(PlayerAgent):
 
     async def _ask_choice(self, prompt: str, candidates: list[str],
                           allow_abstain: bool = True,
-                          exclude_self: bool = True) -> str | None:
+                          exclude_self: bool = True, action: str = "") -> str | None:
         pool = [c for c in candidates if not (exclude_self and c == self.name)]
         while True:
-            raw = await self._ask(prompt, pool, allow_abstain)
+            raw = await self._ask(prompt, pool, allow_abstain, action)
             if allow_abstain and raw in ("", "弃权"):
                 return None
             choice = self._resolve_choice(raw, pool)
@@ -148,30 +146,32 @@ class WebHumanAgent(PlayerAgent):
                                   "text": f"⚠️ 无效选择「{raw}」，请重新选择"})
 
     async def speak(self, round_no: int) -> str:
-        text = await self._ask(f"轮到你发言（第 {round_no} 轮，≤{self.speech_max_chars} 字）")
+        text = await self._ask(f"轮到你发言（第 {round_no} 轮，≤{self.speech_max_chars} 字）",
+                               action="speak")
         return (text or "（我选择沉默）")[: self.speech_max_chars]
 
     async def vote(self, candidates: list[str], round_no: int):
-        return await self._ask_choice(f"投票放逐（第 {round_no} 轮）", candidates)
+        return await self._ask_choice(f"投票放逐（第 {round_no} 轮）", candidates,
+                                      action="vote")
 
     async def werewolf_discuss(self, channel, alive_targets, round_no):
         # 频道消息已通过 wolf_hear 实时推送，这里不再整段重复展示
-        msg = (await self._ask(f"狼人频道发言（第 {round_no} 夜，≤50 字）") or "……")[:50]
+        msg = (await self._ask(f"狼人频道发言（第 {round_no} 夜，≤50 字）",
+                               action="wolf_chat") or "……")[:50]
         # 自己的发言也回显进频道流（wolf_hear 只推队友的消息）
-        self._feed.put_nowait({"t": "feed", "kind": "wolf",
-                               "text": f"🐺 狼人频道 · {self.name}（你）: {msg}"})
+        self._feed.put_nowait(wolf_msg(self.name, msg))
         return msg
 
     async def werewolf_kill_vote(self, channel, alive_targets, round_no):
         # 自刀局候选含狼人：可以刀队友甚至刀自己（骗解药/做高身份）
         c = await self._ask_choice(
             "今晚刀谁？（候选里有狼人 = 本局允许自刀，可骗解药/做高身份）",
-            alive_targets, allow_abstain=False, exclude_self=False)
+            alive_targets, allow_abstain=False, exclude_self=False, action="kill")
         return c or self.rng.choice(alive_targets)
 
     async def seer_check(self, candidates, round_no):
         c = await self._ask_choice(f"预言家验人（第 {round_no} 夜）",
-                                   candidates, allow_abstain=False)
+                                   candidates, allow_abstain=False, action="check")
         return c or self.rng.choice(candidates)
 
     async def witch_action(self, killed, has_antidote, has_poison,
@@ -183,58 +183,36 @@ class WebHumanAgent(PlayerAgent):
                                       "text": "今晚被刀的是你，但首夜之后不能自救"})
             else:
                 raw = await self._ask(f"今晚被刀的是 {killed}，用解药救吗？",
-                                      ["救", "不救"], allow_abstain=False)
+                                      ["救", "不救"], allow_abstain=False,
+                                      action="save")
                 save = raw == "救"
         poison = None
         if has_poison and not save:
-            poison = await self._ask_choice("用毒药毒谁？（回车/弃权 = 不用）",
-                                            alive_others)
+            poison = await self._ask_choice("用毒药毒谁？（弃权 = 不用）",
+                                            alive_others, action="poison")
         return {"save": save, "poison": poison}
 
     async def hunter_shot(self, candidates, round_no, cause):
         return await self._ask_choice(f"你{cause}，可以开枪带走一人（也可不开枪）",
-                                      candidates)
+                                      candidates, action="shoot")
 
 
-# ---------- 历史对局存档 ----------
-def _save_history(record: dict) -> str:
-    HISTORY_DIR.mkdir(exist_ok=True)
-    hist_id = time.strftime("%Y%m%d_%H%M%S")
-    (HISTORY_DIR / f"{hist_id}.json").write_text(
-        json.dumps(record, ensure_ascii=False, indent=1), encoding="utf-8")
-    return hist_id
-
-
+# ---------- 历史对局存档（读写都在 archive.py） ----------
 async def _send_history_list(ws: WebSocket) -> None:
-    games = []
-    if HISTORY_DIR.exists():
-        for f in sorted(HISTORY_DIR.glob("*.json"), reverse=True):
-            try:
-                g = json.loads(f.read_text(encoding="utf-8"))
-                games.append({
-                    "id": f.stem, "ts": g.get("ts", f.stem),
-                    "cfg": g.get("cfg", ""), "winner": g.get("winner", ""),
-                    "players": g.get("players", []),
-                })
-            except Exception:
-                continue
     await ws.send_text(json.dumps(
-        {"t": "history_list", "games": games[:20]}, ensure_ascii=False))
+        {"t": "history_list", "games": archive.list_games()}, ensure_ascii=False))
 
 
 async def _send_history_game(ws: WebSocket, hist_id: str) -> None:
-    f = HISTORY_DIR / f"{hist_id}.json"
-    if not f.exists():
+    g = archive.load_game(hist_id)
+    if g is None:
         await ws.send_text(json.dumps(
-            {"t": "feed", "kind": "private", "text": "⚠️ 找不到该历史对局"},
-            ensure_ascii=False))
+            {"t": "toast", "text": "找不到该历史对局"}, ensure_ascii=False))
         return
-    g = json.loads(f.read_text(encoding="utf-8"))
     await ws.send_text(json.dumps({"t": "history_game", "game": g},
                                   ensure_ascii=False))
 
 
-# ---------- 赛后讨论 ----------
 async def _handle_discuss(ws: WebSocket, gm: GameMaster, human_name: str,
                           question: str) -> None:
     """全场 AI 亮身份，带着各自的私密信息和推理回应人类的提问。
@@ -258,7 +236,7 @@ async def _handle_discuss(ws: WebSocket, gm: GameMaster, human_name: str,
 
 
 # ---------- 对局会话 ----------
-ROOMS = RoomManager(CONFIGS, HISTORY_DIR)
+ROOMS = RoomManager(CONFIGS)
 ROOM_MSGS = {"create_room", "join_room", "rejoin"}
 
 
@@ -301,7 +279,7 @@ async def _session_loop(ws: WebSocket, start_msg: dict,
                         incoming: asyncio.Queue) -> None:
     """打完一局 → 赛后模式（复盘/讨论/看历史）→ 收到 start 再开一局。"""
     while True:
-        gm, config, human_name, winner, record, log_path = await _play_one_game(
+        gm, config, human_name, winner, record, log_path, gid = await _play_one_game(
             ws, start_msg, incoming)
         try:
             # 赛后复盘解说（日志已落盘；flash reasoning 模型可能要几十秒）
@@ -310,7 +288,7 @@ async def _session_loop(ws: WebSocket, start_msg: dict,
             except Exception as e:  # 复盘失败不影响终局体验
                 md = f"（复盘生成失败：{e!r}）"
             record["review"] = md
-            record["id"] = _save_history(record)
+            archive.save_record(gid, record)
             await ws.send_text(json.dumps({"t": "review", "md": md},
                                           ensure_ascii=False))
             start_msg = await _post_game_loop(ws, gm, human_name, incoming)
@@ -331,9 +309,9 @@ async def _play_one_game(ws: WebSocket, start_msg: dict,
     inbox: asyncio.Queue = asyncio.Queue()
     record: dict = {"ts": time.strftime("%Y-%m-%d %H:%M:%S"),
                     "cfg": start_msg.get("config", "6p"), "feed": []}
-    # 每局独立日志文件：上一局的 logger 在赛后讨论期间仍然存活，
+    # 每局独立目录：上一局的 logger 在赛后讨论期间仍然存活，
     # 若共用同一文件，新局以 "w" 打开截断后旧句柄再写会造出 NUL 空洞
-    log_path = ROOT / f"game_log_web_{int(time.time() * 1000)}.jsonl"
+    gid, log_path = archive.new_game()
     logger = WebLogger(log_path, feed_q)
     gm = GameMaster(config, logger, rng=rng,
                     human_agent_cls=WebHumanAgent,
@@ -360,7 +338,8 @@ async def _play_one_game(ws: WebSocket, start_msg: dict,
         }.get(phase)
         if label is not None:
             feed_q.put_nowait({"t": "thinking", "on": on,
-                               "label": label if on else ""})
+                               "label": label if on else "",
+                               "player": player if on else "", "phase": phase})
 
     gm.client.on_status = on_llm_status
     human_name = next(p["name"] for p in config["players"] if p.get("human"))
@@ -375,7 +354,9 @@ async def _play_one_game(ws: WebSocket, start_msg: dict,
     async def pump_out():  # 服务端事件 → 浏览器，同时录进历史存档
         while True:
             m = await feed_q.get()
-            if m.get("t") in ("feed", "role"):
+            if m is None:  # 收尾哨兵：前面的消息都已发出
+                return
+            if m.get("t") in RECORDED:
                 record["feed"].append(m)
             await ws.send_text(json.dumps(m, ensure_ascii=False))
 
@@ -402,18 +383,21 @@ async def _play_one_game(ws: WebSocket, start_msg: dict,
             raise WebSocketDisconnect()
         winner = game_task.result()
     finally:
-        out_task.cancel()
         in_task.cancel()
+        # 对局最后几条（终局公告/狼人频道回放）可能还在队列里：发完再收尾
+        feed_q.put_nowait(None)
+        try:
+            await asyncio.wait_for(out_task, timeout=5)
+        except Exception:  # 连接已断 / 超时：直接放弃
+            out_task.cancel()
         # 注意：这里不关 logger——赛后讨论还要往日志写 llm_call 事件，
         # 提前关闭会让所有赛后发言报 "I/O operation on closed file"
         # （logger 由 _session_loop 在赛后模式结束后统一关闭）
-    reveal = "；".join(f"{p.name}={ROLE_NAMES[p.role]}" for p in gm.players.values())
-    record["winner"] = winner
-    record["reveal"] = reveal
-    await ws.send_text(json.dumps(
-        {"t": "game_over", "winner": winner, "reveal": reveal},
-        ensure_ascii=False))
-    return gm, config, human_name, winner, record, log_path
+    over = game_over_msg(gm, winner)
+    record.update(winner=winner, reveal=over["reveal"], rounds=gm.round_no,
+                  final=over["players"])
+    await ws.send_text(json.dumps(over, ensure_ascii=False))
+    return gm, config, human_name, winner, record, log_path, gid
 
 
 async def _post_game_loop(ws: WebSocket, gm: GameMaster, human_name: str,

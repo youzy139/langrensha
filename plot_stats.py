@@ -1,4 +1,4 @@
-"""读取 logs/stats.json，绘制狼人杀实验胜率统计图。"""
+"""读取 data/experiments/6p_flash/stats.json，绘制狼人杀实验胜率统计图。"""
 
 import json
 import sys
@@ -13,7 +13,7 @@ import seaborn as sns
 
 setup_plot()
 
-stats = json.loads(Path("logs/stats.json").read_text(encoding="utf-8"))
+stats = json.loads(Path("data/experiments/6p_flash/stats.json").read_text(encoding="utf-8"))
 
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 4.5))
 

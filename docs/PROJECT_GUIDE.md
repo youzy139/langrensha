@@ -190,7 +190,7 @@ self.system_prompt              # 角色 + 目标 + 策略
    （提示：发言是串行的，恢复点之后的发言不能重复广播）
 5. 为什么 `_resolve_choice` 需要模糊匹配？给出一个会失败的例子。
 6. "pro 好人抓狼更准（狼存活率更低）却赢不了"的机制是什么？（答案在
-   `logs_8p_pro_village/game_2.review.md`）
+   `data/experiments/8p_pro_village/game_2.review.md`）
 7. 如果让你加"守卫"角色（每晚守护一人免刀），要改哪几个文件？女巫的
    `killed` 结算逻辑要不要动？
 
